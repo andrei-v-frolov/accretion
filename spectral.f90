@@ -1,8 +1,8 @@
 ! $Id$
 ! 
-! tutorial code solving 1D wave equation Box[phi] = 0 in Schwarzschield metric
+! tutorial code solving 1D wave equation Box[phi] = m^2 phi in Schwarzschield metric
 !   ds^2 = -g(r) dt^2 + dr^2/g(r) + r^2 dOmega^2, g(r) = 1-2M/r
-! in tortoise coordinates dx = dr/g(r) where field equation of motion becomes
+! in tortoise coordinates dx = dr/g(r) where d'Alembert operator becomes
 !   g(r) Box[phi] = [-(d/dt)^2 + (d/dx)^2 + 2 g(r)/r (d/dx)] phi(x,t)
 ! which is a 1D wave equation with radial damping profile leading to back-scatter
 ! 
