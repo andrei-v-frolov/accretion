@@ -1,0 +1,16 @@
+#!/usr/bin/env gnuplot
+
+set terminal png enhanced notransparent font "Helvetica Neue,24" size 1280,800
+
+!set size square
+set xrange [-15:15]
+set yrange [-1.5:1.5]
+
+do for [frame = 0:2048] {
+    set output sprintf("frame-%04i.png", frame)
+    plot 'DATA' index frame using 2:4 with lines lw 5 title '{/Symbol f}(x)'
+}
+
+# encode preset for iPhone compatibility
+! mencoder -ovc x264 mf://"*.png" -x264encopts crf=28:vbv_maxrate=1500:nocabac:global_header:frameref=3:threads=auto:bframes=0:subq=6:mixed-refs=0:weightb=0:8x8dct=1:me=umh:partitions=all:qp_step=4:qcomp=0.7:trellis=1:direct_pred=auto -o test.mp4
+! rm -f frame-*.png
