@@ -23,8 +23,8 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! basic how to:
 ! 
-! compile with: ifort -O3 -ipo -r8 {-parallel|-openmp} -L /opt/intel/mkl/lib -lmkl_rt wave.f90
-! or with GCC: gfortran -O3 -fdefault-real-8 {-fopenmp} -llapack wave.f90
+! compile with: ifort -O3 -ipo -r8 {-parallel|-openmp} -L /opt/intel/mkl/lib -lmkl_rt spectral.f90 <model>.f90
+! or with GCC: gfortran -O3 -fdefault-real-8 {-fopenmp} -llapack spectral.f90 <model>.f90
 ! 
 ! run as: ./a.out > DATA; plot output using gnuplot: splot 'DATA' u 2:1:4 w l
 ! basic stop-frame animations can be done with gnuplot, for example using:
@@ -32,7 +32,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-program wave; implicit none
+program wave; use starobinsky, only : DV; implicit none
 
 ! solver control parameters
 integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
@@ -54,10 +54,10 @@ call initg(); call initl()
 if (x(nn/2+1)-x(nn/2) < dt) pause "Time step violates Courant condition, do you really want to run?"
 
 ! initial field and velocity profiles
-v(1:nn) = 1.0; v(nn+1:2*nn) = 0.0
+v(1:nn) = -1.0e-4; v(nn+1:2*nn) = 0.0
 
 ! force term corresponding to matter distributuion truncated at 6M
-F = 50.0*(tanh(5.0*(r-3.0)) + 1.0); call static(F, 100.0, v(1:nn))
+F = DV(v(nn))*(tanh(5.0*(r-3.0)) + 1.0)/2.0; !call static(F, 100.0, v(1:nn))
 
 ! output initial conditions
 call dump(0.0, v)
@@ -72,14 +72,6 @@ contains
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-! derivative of scalar field potential
-elemental function DV(phi)
-        real DV, phi; intent(in) :: phi
-        real, parameter :: m2 = 100.0
-        
-        DV = m2 * phi
-end function DV
 
 ! areal radius r from tortoise coordinate x (in units of 2M)
 elemental function radius(x)
