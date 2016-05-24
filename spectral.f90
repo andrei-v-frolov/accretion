@@ -41,7 +41,7 @@ real,    parameter :: dt = 0.005                ! time step size (simulated time
 
 ! collocation grid, metric functions, and spectral Laplacian operator
 ! phase space state vector v packs phi (1:nn) and dot(phi) (nn+1:nn+nn)
-real theta(nn), x(nn), r(nn), g(nn), L(nn,nn), v(2*nn)
+real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), v(2*nn)
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -55,6 +55,9 @@ if (x(nn/2+1)-x(nn/2) < dt) pause "Time step violates Courant condition, do you 
 
 ! initial field and velocity profiles
 v(1:nn) = 1.0; v(nn+1:2*nn) = 0.0
+
+! force term corresponding to matter distributuion truncated at 6M
+F = 50.0*(tanh(5.0*(r-3.0)) + 1.0); call static(F, 100.0, v(1:nn))
 
 ! output initial conditions
 call dump(0.0, v)
@@ -150,9 +153,34 @@ subroutine evalf(v, dvdt)
         
         ! unmangle phase space state vector contents into human-readable form
         associate (phi => v(1:nn), pi => v(nn+1:2*nn), dphi => dvdt(1:nn), dpi => dvdt(nn+1:2*nn))
-                dphi = pi; dpi = matmul(L,phi) - g*DV(phi)
+                dphi = pi; dpi = matmul(L,phi) - g*(DV(phi) - F)
         end associate
 end subroutine evalf
+
+! find static solution for a massive scalar field
+subroutine static(F, m2, phi)
+        real m2, F(nn), phi(nn), A(nn,nn), B(nn,1)
+        integer i, pivot(nn), status
+        
+        ! set up Laplace equation for massive field
+        A = L; do i = 1,nn
+                A(i,i) = A(i,i) - m2*g(i)
+                B(i,1) = -g(i)*F(i)
+        end do
+        
+        ! find static solution by direct inversion
+        status = 0; select case (kind(A))
+                case(4); call sgesv(nn, 1, A, nn, pivot, B, nn, status)
+                case(8); call dgesv(nn, 1, A, nn, pivot, B, nn, status)
+                case default; call abort
+        end select
+        
+        ! bail at first sign of trouble
+        if (status /= 0) call abort
+        
+        ! return static solution
+        phi = B(:,1)
+end subroutine static
 
 ! dump simulation data in plain text format
 subroutine dump(t, v)
