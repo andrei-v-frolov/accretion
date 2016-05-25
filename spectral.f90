@@ -32,7 +32,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-program wave; use starobinsky, only : DV; implicit none
+program wave; use starobinsky, only : phi0, DV, DDV; implicit none
 
 ! solver control parameters
 integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
@@ -54,10 +54,10 @@ call initg(); call initl()
 if (x(nn/2+1)-x(nn/2) < dt) pause "Time step violates Courant condition, do you really want to run?"
 
 ! initial field and velocity profiles
-v(1:nn) = -1.0e-4; v(nn+1:2*nn) = 0.0
+v(1:nn) = phi0; v(nn+1:2*nn) = 0.0
 
 ! force term corresponding to matter distributuion truncated at 6M
-F = DV(v(nn))*(tanh(5.0*(r-3.0)) + 1.0)/2.0; !call static(F, 100.0, v(1:nn))
+F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0; call static(v(1:nn))
 
 ! output initial conditions
 call dump(0.0, v)
@@ -149,15 +149,16 @@ subroutine evalf(v, dvdt)
         end associate
 end subroutine evalf
 
-! find static solution for a massive scalar field
-subroutine static(F, m2, phi)
-        real m2, F(nn), phi(nn), A(nn,nn), B(nn,1)
+! solve linear Laplace problem [L - m_eff^2] phi = RHS
+! for massive scalar field, static phi = lsolve(m2*g, -g*F)
+function lsolve(m2eff, rhs)
+        real lsolve(nn), m2eff(nn), rhs(nn), A(nn,nn), B(nn,1)
         integer i, pivot(nn), status
         
         ! set up Laplace equation for massive field
         A = L; do i = 1,nn
-                A(i,i) = A(i,i) - m2*g(i)
-                B(i,1) = -g(i)*F(i)
+                A(i,i) = A(i,i) - m2eff(i)
+                B(i,1) = rhs(i)
         end do
         
         ! find static solution by direct inversion
@@ -170,8 +171,19 @@ subroutine static(F, m2, phi)
         ! bail at first sign of trouble
         if (status /= 0) call abort
         
-        ! return static solution
-        phi = B(:,1)
+        ! return solution
+        lsolve = B(:,1)
+end function lsolve
+
+! find static solution for a non-linear scalar field
+! (even linear problem benefits from two iterations)
+subroutine static(phi)
+        real phi(nn); integer i
+        
+        do i = 1,16
+                !write (*,*) i, sum((g*(DV(phi) - F) - matmul(L,phi))**2)
+                phi = phi + lsolve(g*DDV(phi), g*(DV(phi) - F) - matmul(L,phi))
+        end do
 end subroutine static
 
 ! dump simulation data in plain text format

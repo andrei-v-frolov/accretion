@@ -6,7 +6,7 @@
 module massive; implicit none
 
 real, parameter :: m2 = 100.0
-
+real, parameter :: phi0 = 1.0
 
 contains
 
@@ -16,5 +16,12 @@ elemental function DV(phi)
         
         DV = m2 * phi
 end function DV
+
+! second derivative of scalar field potential
+elemental function DDV(phi)
+        real DDV, phi; intent(in) :: phi
+        
+        DDV = m2
+end function DDV
 
 end module
