@@ -23,8 +23,8 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! basic how to:
 ! 
-! compile with: ifort -O3 -ipo -r8 {-parallel|-openmp} -L /opt/intel/mkl/lib -lmkl_rt spectral.f90 <model>.f90
-! or with GCC: gfortran -O3 -fdefault-real-8 {-fopenmp} -llapack spectral.f90 <model>.f90
+! compile with: ifort -O3 -ipo -heap-arrays 256 -r8 {-parallel|-openmp} -lmkl_rt -lcfitsio spectral.f90 fitsio.f90 <model>.f90
+! or with GCC: gfortran -O3 -fdefault-real-8 {-fopenmp} -llapack -lcfitsio spectral.f90 fitsio.f90 <model>.f90
 ! 
 ! run as: ./a.out > DATA; plot output using gnuplot: splot 'DATA' u 2:1:4 w l
 ! basic stop-frame animations can be done with gnuplot, for example using:
