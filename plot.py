@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 file = None
+#file = 'output.pdf'
 
 # import libraries
 import matplotlib
@@ -43,11 +44,15 @@ hdu.close()
 figure(figsize=(10,8), frameon=False)
 gradient = ["plum", "blue", "palegreen", "red", "white"]
 c = matplotlib.colors.LinearSegmentedColormap.from_list("difference", gradient)
-imshow(q, extent=(x[0],x[-1],y[0],y[-1]), origin='lower', aspect=(osx*dx)/(osy*dy), cmap=c, interpolation='none'); colorbar(shrink=1.0)
+imshow(q, extent=(x[0],x[-1],y[0],y[-1]), origin='lower', aspect=(osx*dx)/(osy*dy), cmap=c, interpolation='none')
+colorbar(shrink=1.0).set_label('$\\phi$')
+
+# overlay field isolines
+overlay = contour(X, Y, q); clabel(overlay, inline=1, fontsize=10)
 
 # overlay field profiles
 for t in range(50,ny,100):
-	plot(x, y[t]+100.0*q[t,:], 'k-', alpha=0.3)
+	plot(x, y[t]+100.0*q[t,:], 'k-', linewidth=0.5, alpha=0.3)
 
 xlim([x[0],x[-1]]); #xticks(arange(5)-11.0)
 ylim([y[0],y[-1]]); #yticks(arange(5)-11.0)
