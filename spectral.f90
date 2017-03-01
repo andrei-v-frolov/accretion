@@ -1,5 +1,3 @@
-! $Id$
-! 
 ! tutorial code solving 1D wave equation Box[phi] = m^2 phi in Schwarzschield metric
 !   ds^2 = -g(r) dt^2 + dr^2/g(r) + r^2 dOmega^2, g(r) = 1-2M/r
 ! in tortoise coordinates dx = dr/g(r) where d'Alembert operator becomes
@@ -21,37 +19,54 @@
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! basic how to:
+! QUICK START:
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! 
-! compile with: ifort -O3 -ipo -heap-arrays 256 -r8 {-parallel|-openmp} -lmkl_rt -lcfitsio spectral.f90 fitsio.f90 <model>.f90
-! or with GCC: gfortran -O3 -fdefault-real-8 {-fopenmp} -llapack -lcfitsio spectral.f90 fitsio.f90 <model>.f90
+! compile and link with LAPACK and CFITSIO libraries (use make or examples below)
+! ifort -O3 -ipo -heap-arrays 256 -r8 {-parallel|-qopenmp} -lmkl_rt -lcfitsio spectral.f90 fitsio.f90 <model>.f90
+! gfortran -O3 -fdefault-real-8 {-fopenmp} -llapack -lcfitsio spectral.f90 fitsio.f90 <model>.f90
 ! 
 ! run as: ./a.out > DATA; plot output using gnuplot: splot 'DATA' u 2:1:4 w l
 ! basic stop-frame animations can be done with gnuplot, for example using:
 ! set yrange [-1:1]; frame=0; plot 'DATA' index frame u 2:4 w l; load 'animate.gpl'
+! 
+! full evolution history is resampled onto an uniform grid and output as a FITS file,
+! which can be imported into Python for advanced plotting (using PyFITS/Astropy)
+! see bundled Python script 'plot.py' for the glue code and matplotlib examples
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-program wave; use starobinsky, only : phi0, DV, DDV; implicit none
+program wave; use fitsio; use starobinsky, only : phi0, DV, DDV; implicit none
 
 ! solver control parameters
 integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
 integer, parameter :: tt = 2**11                ! total number of time steps to take (i.e. runtime)
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
 
+! output control parameters
+integer, parameter :: pts = 2**10 + 1           ! number of points on an uniform-spaced output grid
+real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
+
 ! collocation grid, metric functions, and spectral Laplacian operator
 ! phase space state vector v packs phi (1:nn) and dot(phi) (nn+1:nn+nn)
-real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), v(2*nn)
+real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), Q(pts,nn), v(2*nn)
+
+! field evolution history for binary output, resampled on an uniform grid
+! this can be a rather large array, so it is best to allocate it dynamically
+real, allocatable :: history(:,:,:)
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 integer i
 
-! initialize grid and Laplacian oprator
+! allocate storage for field evolution
+allocate(history(2,pts,tt+1), source=0.0)
+
+! initialize grid and linear operators (Laplacian L and prolongation Q)
 call initg(); call initl()
 
 ! sanity check on the time step value selected
-if (x(nn/2+1)-x(nn/2) < dt) pause "Time step violates Courant condition, do you really want to run?"
+if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
 
 ! initial field and velocity profiles
 v(1:nn) = phi0; v(nn+1:2*nn) = 0.0
@@ -60,13 +75,15 @@ v(1:nn) = phi0; v(nn+1:2*nn) = 0.0
 F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0; call static(v(1:nn))
 
 ! output initial conditions
-call dump(0.0, v)
+call dump(0.0, v, history(:,:,1))
 
 ! main time evolution loop
 do i = 1,tt
-        call gl10(v, dt)
-        call dump(i*dt, v)
+        call gl10(v, dt); call dump(i*dt, v, history(:,:,i+1))
 end do
+
+! write entire evolution history into a FITS file
+call write2fits('output.fits', history, [-x0,x0], [0.0,tt*dt], ['phi','pi'], '(x,t)')
 
 contains
 
@@ -105,30 +122,46 @@ subroutine initg()
 end subroutine initg
 
 ! evaluate rational Chebyshev basis on collocation grid theta
-subroutine evalb(n, theta, Tn, Dn)
-        integer n; real, dimension(nn) :: theta, Tn, Tnx, Tnxx, Dn
-        intent(in) n, theta; intent(out) Tn, Dn; !optional Dn
+subroutine evalb(n, pts, theta, Tn, Dn, p, q)
+        integer n, pts, mode; real, dimension(pts) :: theta, p, q, Tn, Tnx, Tnxx, Dn
+        intent(in) n, pts, theta, p, q; intent(out) Tn, Dn; optional p, q, Dn
         
         ! Chebyshev basis and its derivatives
         Tn = cos(n*theta)
+        if (.not. present(Dn)) return
         Tnx = n * sin(n*theta) * sin(theta)**2
         Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
         
-        ! Laplacian operator for Schwarzschild metric
-        Dn = Tnxx + 2.0*g/r * Tnx
+        ! Dn is a linear combination of first and second derivatives with coefficients p and q
+        mode = 0; if (present(p)) mode = mode+2; if (present(q)) mode = mode+1
+        
+        ! Laplacian operator for Schwarzschild metric has q = 2.0*g/r
+        select case (mode)
+        	case(3); Dn = p*Tnxx + q*Tnx    ! both p and q are specified
+        	case(2); Dn = p*Tnxx            ! q is omitted, assume q = 0
+        	case(1); Dn = Tnxx + q*Tnx      ! p is omitted, assume p = 1
+        	case(0); Dn = Tnx               ! both p and q are omitted
+        end select
 end subroutine evalb
 
 ! initialize Laplacian operator matrix
 subroutine initl()
-        integer i, pivot(nn), status; real A(nn,nn), B(nn,nn)
+        integer i, pivot(nn), status; real x(pts), grid(pts), A(nn,nn), B(nn,nn+pts)
         
-        ! evaluate basis and differential operator values on a grid
-        do i = 1,nn; call evalb(i-1, theta, A(i,:), B(i,:)); end do
+        ! output is resampled onto a uniform grid in x
+        forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1)
+        grid = acos(x/sqrt(1.0 + x**2))
         
-        ! find linear differentiation matrix
+        ! evaluate basis and differential operator values on collocation and output grids
+        do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts))
+                call evalb(i-1, nn, theta, basis, laplacian, q=2.0*g/r)
+                call evalb(i-1, pts, grid, resampled)
+        end associate; end do
+        
+        ! find linear operator matrices
         status = 0; select case (kind(A))
-                case(4); call sgesv(nn, nn, A, nn, pivot, B, nn, status)
-                case(8); call dgesv(nn, nn, A, nn, pivot, B, nn, status)
+                case(4); call sgesv(nn, nn+pts, A, nn, pivot, B, nn, status)
+                case(8); call dgesv(nn, nn+pts, A, nn, pivot, B, nn, status)
                 case default; call abort
         end select
         
@@ -136,7 +169,10 @@ subroutine initl()
         if (status /= 0) call abort
         
         ! to evaluate Laplacian of function f, simply do matmul(L,f)
-        L = transpose(B)
+        L = transpose(B(:,1:nn))
+        
+        ! to resample function f to output grid, simply do matmul(Q,f)
+        Q = transpose(B(:,nn+1:nn+pts))
 end subroutine initl
 
 ! evaluate equations of motion
@@ -187,9 +223,16 @@ subroutine static(phi)
 end subroutine static
 
 ! dump simulation data in plain text format
-subroutine dump(t, v)
-        real t, v(2*nn); integer i
+subroutine dump(t, v, output)
+        integer i; real t, v(2*nn), output(2,pts); optional output
         
+        ! store resampled output if requested
+        if (present(output)) then
+                output(1,:) = matmul(Q,v(1:nn))
+                output(2,:) = matmul(Q,v(nn+1:nn+nn))
+        end if
+        
+        ! dump solution on collocation nodes
         do i = 1,nn
                 write (*,'(3F24.16,3G24.16)') t, x(i), r(i), v(i), v(nn+i)
         end do
@@ -203,8 +246,8 @@ subroutine gl10(y, dt)
         integer, parameter :: s = 5, n = 2*nn
         real y(n), g(n,s), dt; integer i, k
         
-        ! Butcher tableau for 8th order Gauss-Legendre method
-        real, parameter :: a(s,s) = (/ &
+        ! Butcher tableau for 10th order Gauss-Legendre method
+        real, parameter :: a(s,s) = reshape([ &
                   0.5923172126404727187856601017997934066Q-1, -1.9570364359076037492643214050884060018Q-2, &
                   1.1254400818642955552716244215090748773Q-2, -0.5593793660812184876817721964475928216Q-2, &
                   1.5881129678659985393652424705934162371Q-3,  1.2815100567004528349616684832951382219Q-1, &
@@ -217,11 +260,11 @@ subroutine gl10(y, dt)
                   1.1965716762484161701032287870890954823Q-1, -0.9687563141950739739034827969555140871Q-2, &
                   1.1687532956022854521776677788936526508Q-1,  2.4490812891049541889746347938229502468Q-1, &
                   2.7319004362580148889172820022935369566Q-1,  2.5888469960875927151328897146870315648Q-1, &
-                  0.5923172126404727187856601017997934066Q-1 /)
-        real, parameter ::   b(s) = (/ &
+                  0.5923172126404727187856601017997934066Q-1], [s,s])
+        real, parameter ::   b(s) = [ &
                   1.1846344252809454375713202035995868132Q-1,  2.3931433524968323402064575741781909646Q-1, &
                   2.8444444444444444444444444444444444444Q-1,  2.3931433524968323402064575741781909646Q-1, &
-                  1.1846344252809454375713202035995868132Q-1 /)
+                  1.1846344252809454375713202035995868132Q-1]
         
         ! iterate trial steps
         g = 0.0; do k = 1,16
