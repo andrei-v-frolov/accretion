@@ -3,5 +3,14 @@ attic/*
 notes/*
 
 # ignore Fortran binaries
+*.[ao]
 *.out
 *.mod
+
+# compiled Python
+*.py[cod]
+
+# generated data
+*.fits
+*.pdf
+
