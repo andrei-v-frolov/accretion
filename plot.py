@@ -54,11 +54,9 @@ overlay = contour(X, Y, q); clabel(overlay, inline=1, fontsize=10)
 for t in range(50,ny,100):
 	plot(x, y[t]+100.0*q[t,:], 'k-', linewidth=0.5, alpha=0.3)
 
-xlim([x[0],x[-1]]); #xticks(arange(5)-11.0)
-ylim([y[0],y[-1]]); #yticks(arange(5)-11.0)
-
-xlabel('$x$')
-ylabel('$t$')
+# configure plot axes
+xlabel('$x$'); xlim([x[0],x[-1]]); #xticks(arange(5)-11.0)
+ylabel('$t$'); ylim([y[0],y[-1]]); #yticks(arange(5)-11.0)
 
 if not(file is None): plt.savefig(file, bbox_inches='tight', pad_inches=0.02, transparent=True)
 show()
