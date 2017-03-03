@@ -47,9 +47,12 @@ real,    parameter :: dt = 0.005                ! time step size (simulated time
 integer, parameter :: pts = 2**10 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
 
+! this is exactly what you think it is...
+real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
+
 ! collocation grid, metric functions, and spectral Laplacian operator
 ! phase space state vector v packs phi (1:nn) and dot(phi) (nn+1:nn+nn)
-real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), Q(pts,nn), v(2*nn)
+real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), Q(pts,nn), U(pts,nn), v(2*nn)
 
 ! field evolution history for binary output, resampled on an uniform grid
 ! this can be a rather large array, so it is best to allocate it dynamically
@@ -60,7 +63,7 @@ real, allocatable :: history(:,:,:)
 integer i
 
 ! allocate storage for field evolution
-allocate(history(2,pts,tt+1), source=0.0)
+allocate(history(3,pts,tt+1), source=0.0)
 
 ! initialize grid and linear operators (Laplacian L and prolongation Q)
 call initg(); call initl()
@@ -83,7 +86,7 @@ do i = 1,tt
 end do
 
 ! write entire evolution history into a FITS file
-call write2fits('output.fits', history, [-x0,x0], [0.0,tt*dt], ['phi','pi'], '(x,t)')
+call write2fits('output.fits', history, [-x0,x0], [0.0,tt*dt], ['phi','pi','flux'], '(x,t)')
 
 contains
 
@@ -112,7 +115,7 @@ end function radius
 
 ! initialize Gauss-Lobatto collocation grid
 subroutine initg()
-        integer i; real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
+        integer i
         
         ! Chebyshev collocation grid (extrema and roots-of varieties)
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
@@ -138,30 +141,30 @@ subroutine evalb(n, pts, theta, Tn, Dn, p, q)
         ! Laplacian operator for Schwarzschild metric has q = 2.0*g/r
         select case (mode)
         	case(3); Dn = p*Tnxx + q*Tnx    ! both p and q are specified
-        	case(2); Dn = p*Tnxx            ! q is omitted, assume q = 0
+        	case(2); Dn = p*Tnx             ! q is omitted, assume q = 0
         	case(1); Dn = Tnxx + q*Tnx      ! p is omitted, assume p = 1
-        	case(0); Dn = Tnx               ! both p and q are omitted
+        	case(0); Dn = Tnxx              ! both p and q are omitted
         end select
 end subroutine evalb
 
 ! initialize Laplacian operator matrix
 subroutine initl()
-        integer i, pivot(nn), status; real x(pts), grid(pts), A(nn,nn), B(nn,nn+pts)
+        integer i, pivot(nn), status; real x(pts), grid(pts), area(pts), A(nn,nn), B(nn,nn+pts+pts)
         
         ! output is resampled onto a uniform grid in x
         forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1)
-        grid = acos(x/sqrt(1.0 + x**2))
+        grid = acos(x/sqrt(1.0 + x**2)); area = 4.0*pi*radius(x)**2
         
         ! evaluate basis and differential operator values on collocation and output grids
-        do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts))
+        do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts), gradient => B(i,nn+pts+1:nn+pts+pts))
                 call evalb(i-1, nn, theta, basis, laplacian, q=2.0*g/r)
-                call evalb(i-1, pts, grid, resampled)
+                call evalb(i-1, pts, grid, resampled, gradient, p=area)
         end associate; end do
         
         ! find linear operator matrices
         status = 0; select case (kind(A))
-                case(4); call sgesv(nn, nn+pts, A, nn, pivot, B, nn, status)
-                case(8); call dgesv(nn, nn+pts, A, nn, pivot, B, nn, status)
+                case(4); call sgesv(nn, nn+pts+pts, A, nn, pivot, B, nn, status)
+                case(8); call dgesv(nn, nn+pts+pts, A, nn, pivot, B, nn, status)
                 case default; call abort
         end select
         
@@ -173,6 +176,9 @@ subroutine initl()
         
         ! to resample function f to output grid, simply do matmul(Q,f)
         Q = transpose(B(:,nn+1:nn+pts))
+        
+        ! to resample gradient f to output grid, simply do matmul(U,f)
+        U = transpose(B(:,nn+pts+1:nn+pts+pts))
 end subroutine initl
 
 ! evaluate equations of motion
@@ -224,12 +230,13 @@ end subroutine static
 
 ! dump simulation data in plain text format
 subroutine dump(t, v, output)
-        integer i; real t, v(2*nn), output(2,pts); optional output
+        integer i; real t, v(2*nn), output(3,pts); optional output
         
         ! store resampled output if requested
         if (present(output)) then
                 output(1,:) = matmul(Q,v(1:nn))
                 output(2,:) = matmul(Q,v(nn+1:nn+nn))
+                output(3,:) = matmul(U,v(1:nn))*output(2,:)
         end if
         
         ! dump solution on collocation nodes
