@@ -5,7 +5,7 @@
 
 module massive; implicit none
 
-real, parameter :: m2 = 100.0
+real, parameter :: m2 =   0.0
 real, parameter :: phi0 = 1.0
 
 contains

@@ -1,8 +1,7 @@
-! tutorial code solving 1D wave equation Box[phi] = m^2 phi in Schwarzschield metric
-!   ds^2 = -g(r) dt^2 + dr^2/g(r) + r^2 dOmega^2, g(r) = 1-2M/r
-! in tortoise coordinates dx = dr/g(r) where d'Alembert operator becomes
-!   g(r) Box[phi] = [-(d/dt)^2 + (d/dx)^2 + 2 g(r)/r (d/dx)] phi(x,t)
-! which is a 1D wave equation with radial damping profile leading to back-scatter
+! tutorial code solving 1D wave equation Box[phi] = m^2 phi in flat metric
+!   ds^2 = -dt^2 + dx^2, 
+! where d'Alembert operator is
+!   Box[phi] = [-(d/dt)^2 + (d/dx)^2] phi(x,t)
 ! 
 ! as we are looking for smooth solutions, the method of choice to calculate
 ! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
@@ -36,15 +35,15 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-program wave; use fitsio; use starobinsky, only : phi0, DV, DDV; implicit none
+program wave; use fitsio; use massive, only : phi0, DV, DDV; implicit none
 
 ! solver control parameters
 integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
-integer, parameter :: tt = 2**11                ! total number of time steps to take (i.e. runtime)
+integer, parameter :: tt = 2**13                ! total number of time steps to take (i.e. runtime)
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
 
 ! output control parameters
-integer, parameter :: pts = 2**10 + 1           ! number of points on an uniform-spaced output grid
+integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
 
 ! this is exactly what you think it is...
@@ -52,7 +51,7 @@ real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
 ! collocation grid, metric functions, and spectral Laplacian operator
 ! phase space state vector v packs phi (1:nn) and dot(phi) (nn+1:nn+nn)
-real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), Q(pts,nn), U(pts,nn), v(2*nn)
+real theta(nn), x(nn), F(nn), L(nn,nn), Q(pts,nn), U(pts,nn), v(2*nn)
 
 ! field evolution history for binary output, resampled on an uniform grid
 ! this can be a rather large array, so it is best to allocate it dynamically
@@ -72,10 +71,10 @@ call initg(); call initl()
 if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
 
 ! initial field and velocity profiles
-v(1:nn) = phi0; v(nn+1:2*nn) = 0.0
+v(1:nn) = phi0*exp(-(x-0.5)**2*2.0); v(nn+1:2*nn) = 0.0
 
 ! force term corresponding to matter distributuion truncated at 6M
-F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0; call static(v(1:nn))
+F = 0.0; !call static(v(1:nn))
 
 ! output initial conditions
 call dump(0.0, v, history(:,:,1))
@@ -93,26 +92,6 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-! areal radius r from tortoise coordinate x (in units of 2M)
-elemental function radius(x)
-        real radius, x, q, r; intent(in) :: x; integer i
-        
-        ! closer to horizon, radius is 2M to all significant digits
-        radius = 1.0; if (x < -(digits(x)-5)*log(2.0)) return
-        
-        ! refine q instead of r = 1.0 + log(1.0+exp(q)); initial guess
-        q = x - 1.0
-        
-        ! Newton's iteration for x = r + log(r-1.0) as a function of q
-        do i = 1,16
-                r = 1.0 + log(1.0+exp(q))
-                q = q - (r + log(r-1.0) - x) * (1.0 - 1.0/r) * (1.0 + exp(-q))
-        end do
-        
-        ! find converged radius value
-        radius = 1.0 + log(1.0+exp(q))
-end function radius
-
 ! initialize Gauss-Lobatto collocation grid
 subroutine initg()
         integer i
@@ -121,7 +100,7 @@ subroutine initg()
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
-        x = cos(theta)/sin(theta); r = radius(x); g = 1.0 - 1.0/r
+        x = cos(theta)/sin(theta)
 end subroutine initg
 
 ! evaluate rational Chebyshev basis on collocation grid theta
@@ -153,11 +132,11 @@ subroutine initl()
         
         ! output is resampled onto a uniform grid in x
         forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1)
-        grid = acos(x/sqrt(1.0 + x**2)); area = 4.0*pi*radius(x)**2
+        grid = acos(x/sqrt(1.0 + x**2)); area = 1.0
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts), gradient => B(i,nn+pts+1:nn+pts+pts))
-                call evalb(i-1, nn, theta, basis, laplacian, q=2.0*g/r)
+                call evalb(i-1, nn, theta, basis, laplacian)
                 call evalb(i-1, pts, grid, resampled, gradient, p=area)
         end associate; end do
         
@@ -187,12 +166,12 @@ subroutine evalf(v, dvdt)
         
         ! unmangle phase space state vector contents into human-readable form
         associate (phi => v(1:nn), pi => v(nn+1:2*nn), dphi => dvdt(1:nn), dpi => dvdt(nn+1:2*nn))
-                dphi = pi; dpi = matmul(L,phi) - g*(DV(phi) - F)
+                dphi = pi; dpi = matmul(L,phi) - (DV(phi) - F)
         end associate
 end subroutine evalf
 
 ! solve linear Laplace problem [L - m_eff^2] phi = RHS
-! for massive scalar field, static phi = lsolve(m2*g, -g*F)
+! for massive scalar field, static phi = lsolve(m2, -F)
 function lsolve(m2eff, rhs)
         real lsolve(nn), m2eff(nn), rhs(nn), A(nn,nn), B(nn,1)
         integer i, pivot(nn), status
@@ -223,8 +202,7 @@ subroutine static(phi)
         real phi(nn); integer i
         
         do i = 1,16
-                !write (*,*) i, sum((g*(DV(phi) - F) - matmul(L,phi))**2)
-                phi = phi + lsolve(g*DDV(phi), g*(DV(phi) - F) - matmul(L,phi))
+                phi = phi + lsolve(DDV(phi), (DV(phi) - F) - matmul(L,phi))
         end do
 end subroutine static
 
@@ -241,7 +219,7 @@ subroutine dump(t, v, output)
         
         ! dump solution on collocation nodes
         do i = 1,nn
-                write (*,'(3F24.16,3G24.16)') t, x(i), r(i), v(i), v(nn+i)
+                write (*,'(2F24.16,2G24.16)') t, x(i), v(i), v(nn+i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)

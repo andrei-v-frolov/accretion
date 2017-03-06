@@ -35,7 +35,7 @@ clean:
 ################### Binaries & Dependencies ####################
 
 # binaries
-spectral: fitsio.o starobinsky.o
+spectral: fitsio.o massive.o
 
 # generic rules
 %: %.f90

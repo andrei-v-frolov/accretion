@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-file = None
-#file = 'output.pdf'
+#file = None
+file = 'output.pdf'
 
 # import libraries
 import matplotlib
@@ -48,11 +48,11 @@ imshow(q, extent=(x[0],x[-1],y[0],y[-1]), origin='lower', aspect=(osx*dx)/(osy*d
 colorbar(shrink=1.0).set_label('$\\phi$')
 
 # overlay field isolines
-overlay = contour(X, Y, q); clabel(overlay, inline=1, fontsize=10)
+#overlay = contour(X, Y, q); clabel(overlay, inline=1, fontsize=10)
 
 # overlay field profiles
-for t in range(50,ny,100):
-	plot(x, y[t]+100.0*q[t,:], 'k-', linewidth=0.5, alpha=0.3)
+#for t in range(50,ny,100):
+#	plot(x, y[t]+100.0*q[t,:], 'k-', linewidth=0.5, alpha=0.3)
 
 # configure plot axes
 xlabel('$x$'); xlim([x[0],x[-1]]); #xticks(arange(5)-11.0)
