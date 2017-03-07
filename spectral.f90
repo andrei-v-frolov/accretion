@@ -4,8 +4,7 @@
 !   Box[phi] = [-(d/dt)^2 + (d/dx)^2] phi(x,t)
 ! 
 ! as we are looking for smooth solutions, the method of choice to calculate
-! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
-! coordinate y = x/sqrt(1+x^2), or inversely x = y/sqrt(1-y^2)
+! spatial derivatives is pseudo-spectral, using Chebyshev basis on interval
 ! 
 ! time integration is done using Gauss-Legendre method, which is A-stable
 ! and symplectic for Hamiltonian problems, as we have here
@@ -38,13 +37,13 @@
 program wave; use fitsio; use massive, only : phi0, DV, DDV; implicit none
 
 ! solver control parameters
-integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
+integer, parameter :: nn = 2**6                 ! number of nodes to sample on (i.e. spectral order)
 integer, parameter :: tt = 2**13                ! total number of time steps to take (i.e. runtime)
-real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
+real,    parameter :: dt = 0.0005               ! time step size (simulated timespan is tt*dt)
 
 ! output control parameters
 integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
-real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
+real,    parameter :: x0 = 1.0                  ! output spans the range of x in an interval [-x0,x0]
 
 ! this is exactly what you think it is...
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
@@ -68,10 +67,10 @@ allocate(history(3,pts,tt+1), source=0.0)
 call initg(); call initl()
 
 ! sanity check on the time step value selected
-if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
+if (dt > x(2)-x(1)) pause "Time step violates Courant condition, do you really want to run?"
 
 ! initial field and velocity profiles
-v(1:nn) = phi0*exp(-(x-0.5)**2*2.0); v(nn+1:2*nn) = 0.0
+v(1:nn) = phi0*exp(-(x-0.1)**2*50.0); v(nn+1:2*nn) = 0.0
 
 ! force term corresponding to matter distributuion truncated at 6M
 F = 0.0; !call static(v(1:nn))
@@ -97,10 +96,10 @@ subroutine initg()
         integer i
         
         ! Chebyshev collocation grid (extrema and roots-of varieties)
-        !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
-        forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
+        forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
+        !forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
-        x = cos(theta)/sin(theta)
+        x = cos(theta)
 end subroutine initg
 
 ! evaluate rational Chebyshev basis on collocation grid theta
@@ -111,8 +110,8 @@ subroutine evalb(n, pts, theta, Tn, Dn, p, q)
         ! Chebyshev basis and its derivatives
         Tn = cos(n*theta)
         if (.not. present(Dn)) return
-        Tnx = n * sin(n*theta) * sin(theta)**2
-        Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
+        Tnx = n * sin(n*theta)/sin(theta)
+        Tnxx = -n * (n*cos(n*theta)*sin(theta) - sin(n*theta)*cos(theta))/sin(theta)**3
         
         ! Dn is a linear combination of first and second derivatives with coefficients p and q
         mode = 0; if (present(p)) mode = mode+2; if (present(q)) mode = mode+1
@@ -132,7 +131,7 @@ subroutine initl()
         
         ! output is resampled onto a uniform grid in x
         forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1)
-        grid = acos(x/sqrt(1.0 + x**2)); area = 1.0
+        grid = acos(x); area = 1.0
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts), gradient => B(i,nn+pts+1:nn+pts+pts))
@@ -167,6 +166,10 @@ subroutine evalf(v, dvdt)
         ! unmangle phase space state vector contents into human-readable form
         associate (phi => v(1:nn), pi => v(nn+1:2*nn), dphi => dvdt(1:nn), dpi => dvdt(nn+1:2*nn))
                 dphi = pi; dpi = matmul(L,phi) - (DV(phi) - F)
+                
+                ! boundary conditions
+                dphi(1) = 0.0; dpi(1) = 0.0
+                dphi(nn) = 0.0; dpi(nn) = 0.0
         end associate
 end subroutine evalf
 
