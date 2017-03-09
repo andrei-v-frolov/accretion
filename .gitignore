@@ -3,6 +3,7 @@ attic/*
 notes/*
 
 # ignore Fortran binaries
+spectral
 *.[ao]
 *.out
 *.mod
@@ -13,4 +14,8 @@ notes/*
 # generated data
 *.fits
 *.pdf
+
+# ignore stored data
+massive/*
+starobinsky/*
 
