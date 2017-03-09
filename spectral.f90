@@ -105,14 +105,25 @@ end subroutine initg
 
 ! evaluate rational Chebyshev basis on collocation grid theta
 subroutine evalb(n, pts, theta, Tn, Dn, p, q)
-        integer n, pts, mode; real, dimension(pts) :: theta, p, q, Tn, Tnx, Tnxx, Dn
+        integer n, m, pts, mode; real, dimension(pts) :: theta, p, q, Tn, Tnx, Tnxx, Dn
         intent(in) n, pts, theta, p, q; intent(out) Tn, Dn; optional p, q, Dn
         
         ! Chebyshev basis and its derivatives
         Tn = cos(n*theta)
         if (.not. present(Dn)) return
         Tnx = n * sin(n*theta) * sin(theta)**2
-        Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
+        !Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
+        
+        ! Galerkin inner product (Tnxx,Tn)
+        Tnxx = -(3.0/8.0)*n*n * Tn
+        m = n+2; if (m < nn) Tnxx = Tnxx + n*(n+1)*cos(m*theta)/4.0
+                 if (m == 3) Tnxx = Tnxx + cos(m*theta)/16.0
+        m = n-2; if (m >= 0) Tnxx = Tnxx + n*(n-1)*cos(m*theta)/4.0
+                 if (m == 0) Tnxx = Tnxx + (1.0/2.0)
+                 if (m == 1) Tnxx = Tnxx - 3*cos(m*theta)/16.0
+        m = n+4; if (m < nn) Tnxx = Tnxx - n*(n+2)*cos(m*theta)/16.0
+        m = n-4; if (m >= 0) Tnxx = Tnxx - n*(n-2)*cos(m*theta)/16.0
+                 if (m == 0) Tnxx = Tnxx - (1.0/2.0)
         
         ! Dn is a linear combination of first and second derivatives with coefficients p and q
         mode = 0; if (present(p)) mode = mode+2; if (present(q)) mode = mode+1
