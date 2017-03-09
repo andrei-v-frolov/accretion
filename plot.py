@@ -7,8 +7,11 @@ file = None
 import matplotlib
 matplotlib.use('macosx' if file is None else 'PDF')
 
-#import pyfits
-import astropy.io.fits as pyfits
+try:
+	import astropy.io.fits as pyfits
+except ImportError:
+	import pyfits
+
 import numpy as np
 from pylab import *
 
