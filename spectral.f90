@@ -51,7 +51,7 @@ real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
 ! collocation grid, metric functions, and spectral Laplacian operator
 ! phase space state vector v packs phi (1:nn) and dot(phi) (nn+1:nn+nn)
-real theta(nn), x(nn), F(nn), L(nn,nn), Q(pts,nn), U(pts,nn), v(2*nn)
+real theta(nn), x(nn), F(nn), gamma(nn), L(nn,nn), Q(pts,nn), U(pts,nn), v(2*nn)
 
 ! field evolution history for binary output, resampled on an uniform grid
 ! this can be a rather large array, so it is best to allocate it dynamically
@@ -71,7 +71,7 @@ call initg(); call initl()
 if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
 
 ! initial field and velocity profiles
-v(1:nn) = phi0*exp(-(x-0.5)**2*2.0); v(nn+1:2*nn) = 0.0
+v(1:nn) = phi0*exp(-(x-1.0)**2*8.0); v(nn+1:2*nn) = 0.0
 
 ! force term corresponding to matter distributuion truncated at 6M
 F = 0.0; !call static(v(1:nn))
@@ -100,7 +100,7 @@ subroutine initg()
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
-        x = cos(theta)/sin(theta)
+        x = cos(theta)/sin(theta); gamma = 0.0; gamma(1:nn/2) = 10.0
 end subroutine initg
 
 ! evaluate rational Chebyshev basis on collocation grid theta
@@ -166,7 +166,7 @@ subroutine evalf(v, dvdt)
         
         ! unmangle phase space state vector contents into human-readable form
         associate (phi => v(1:nn), pi => v(nn+1:2*nn), dphi => dvdt(1:nn), dpi => dvdt(nn+1:2*nn))
-                dphi = pi; dpi = matmul(L,phi) - (DV(phi) - F)
+                dphi = pi - gamma*phi; dpi = matmul(L,phi) - (DV(phi) - F) - gamma*pi
         end associate
 end subroutine evalf
 
