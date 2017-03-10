@@ -103,27 +103,15 @@ subroutine initg()
         x = cos(theta)/sin(theta); gamma = 0.0; gamma(1:nn/2) = 10.0
 end subroutine initg
 
-! evaluate rational Chebyshev basis on collocation grid theta
-subroutine evalb(n, pts, theta, Tn, Dn, p, q)
-        integer n, pts, mode; real, dimension(pts) :: theta, p, q, Tn, Tnx, Tnxx, Dn
-        intent(in) n, pts, theta, p, q; intent(out) Tn, Dn; optional p, q, Dn
+! evaluate rational Chebyshev basis on grid theta
+subroutine evalb(n, pts, theta, Tn, Tnx, Tnxx)
+        integer n, pts; real, dimension(pts), intent(in) :: theta
+        real, dimension(pts), intent(out), optional :: Tn, Tnx, Tnxx
         
         ! Chebyshev basis and its derivatives
-        Tn = cos(n*theta)
-        if (.not. present(Dn)) return
-        Tnx = n * sin(n*theta) * sin(theta)**2
-        Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
-        
-        ! Dn is a linear combination of first and second derivatives with coefficients p and q
-        mode = 0; if (present(p)) mode = mode+2; if (present(q)) mode = mode+1
-        
-        ! Laplacian operator for Schwarzschild metric has q = 2.0*g/r
-        select case (mode)
-        	case(3); Dn = p*Tnxx + q*Tnx    ! both p and q are specified
-        	case(2); Dn = p*Tnx             ! q is omitted, assume q = 0
-        	case(1); Dn = Tnxx + q*Tnx      ! p is omitted, assume p = 1
-        	case(0); Dn = Tnxx              ! both p and q are omitted
-        end select
+        if (present(Tn))   Tn = cos(n*theta)
+        if (present(Tnx))  Tnx = n * sin(n*theta) * sin(theta)**2
+        if (present(Tnxx)) Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
 end subroutine evalb
 
 ! initialize Laplacian operator matrix
@@ -136,8 +124,8 @@ subroutine initl()
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts), gradient => B(i,nn+pts+1:nn+pts+pts))
-                call evalb(i-1, nn, theta, basis, laplacian)
-                call evalb(i-1, pts, grid, resampled, gradient, p=area)
+                call evalb(i-1, nn, theta, basis, Tnxx=laplacian)
+                call evalb(i-1, pts, grid, resampled, Tnx=gradient)
         end associate; end do
         
         ! find linear operator matrices
