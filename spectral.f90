@@ -7,6 +7,11 @@
 ! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
 ! coordinate y = x/sqrt(1+x^2), or inversely x = y/sqrt(1-y^2)
 ! 
+! absorbing boundary conditions are implemented using perfectly matched layers,
+! applied to flux-conservative form of the wave equation
+!   du/dt = dv/dx - gamma*u, dv/dt = du/dx - gamma*v
+! for auxilliary variables u = dphi/dt, v = dphi/dx and damping factor gamma
+! 
 ! time integration is done using Gauss-Legendre method, which is A-stable
 ! and symplectic for Hamiltonian problems, as we have here
 ! 
@@ -43,21 +48,18 @@ integer, parameter :: tt = 2**13                ! total number of time steps to 
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
 
 ! output control parameters
+integer, parameter :: pml = 2**4                ! perfectly matched layer depth
 integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
 
 ! this is exactly what you think it is...
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
-! collocation grid, metric functions, force term, and phase space vector v
-! v packs phi as v(1:nn) and pi=dot(phi) as v(nn+1:nn+nn)
-real theta(nn), x(nn), F(nn), v(2*nn)
+! collocation grid, metric functions, force term, damping, and phase space vector [phi,u,v]
+real theta(nn), x(nn), F(nn), gamma(nn), state(3*nn)
 
 ! spectral integration, differentiation, Laplacian, and prolongation operators
 real S(nn,nn), D(nn,nn), L(nn,nn), Q(pts,nn)
-
-! boundary operators implementing perfectly matched layer absorption
-real gamma(nn), sigma(nn,nn)
 
 ! field evolution history for binary output, resampled on an uniform grid
 ! this can be a rather large array, so it is best to allocate it dynamically
@@ -76,18 +78,21 @@ call initg(); call initl()
 ! sanity check on the time step value selected
 if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
 
-! initial field and velocity profiles
-v(1:nn) = phi0*exp(-(x-1.0)**2*8.0); v(nn+1:2*nn) = 0.0
-
 ! force term corresponding to matter distributuion truncated at 6M
-F = 0.0; !call static(v(1:nn))
+F = 0.0
+
+! initial field and velocity profiles
+associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn))
+        phi = phi0*exp(-(x-1.0)**2*8.0); !call static(phi)
+        u = 0.0; v = matmul(D,phi)
+end associate
 
 ! output initial conditions
-call dump(0.0, v, history(:,:,1))
+call dump(0.0, state, history(:,:,1))
 
 ! main time evolution loop
 do i = 1,tt
-        call gl10(v, dt); call dump(i*dt, v, history(:,:,i+1))
+        call gl10(state, dt); call dump(i*dt, state, history(:,:,i+1))
 end do
 
 ! write entire evolution history into a FITS file
@@ -106,7 +111,12 @@ subroutine initg()
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
-        x = cos(theta)/sin(theta); gamma = 0.0; gamma(1:nn/2) = 10.0
+        ! PML absorption 
+        
+        x = cos(theta)/sin(theta); gamma = 0.0; !gamma(1:nn/2) = 10.0
+        
+        !forall (i=1:nn) gamma(i) = 100.0/cosh(9.0*(i-1)/(pml-1))**2 + 100.0/cosh(9.0*(i-nn)/(pml-1))**2
+        forall (i=1:nn) gamma(i) = 100.0*(exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2))
 end subroutine initg
 
 ! evaluate rational Chebyshev basis on a grid theta
@@ -178,13 +188,12 @@ subroutine initl()
 end subroutine initl
 
 ! evaluate equations of motion
-subroutine evalf(v, dvdt)
-        real v(2*nn), dvdt(2*nn)
+subroutine evalf(y, dydt)
+        real, dimension(3*nn) :: y, dydt
         
-        ! unmangle phase space state vector contents into human-readable form
-        associate (phi => v(1:nn), pi => v(nn+1:2*nn), dphi => dvdt(1:nn), dpi => dvdt(nn+1:2*nn))
-                dphi = pi - gamma*phi; dpi = matmul(L,phi) - (DV(phi) - F) - gamma*pi
-                !dphi = matmul(D,pi) - gamma*phi; dpi = matmul(D,phi) - gamma*pi
+        ! unmangle phase space vector contents into human-readable form
+        associate (phi => y(1:nn), u => y(nn+1:2*nn), v => y(2*nn+1:3*nn), dphi => dydt(1:nn), dudt => dydt(nn+1:2*nn), dvdt => dydt(2*nn+1:3*nn))
+                dphi = u; dudt = matmul(D,v) - (DV(phi)-F) - gamma*u; dvdt = matmul(D,u) - gamma*v
         end associate
 end subroutine evalf
 
@@ -225,20 +234,19 @@ subroutine static(phi)
 end subroutine static
 
 ! dump simulation data in plain text format
-subroutine dump(t, v, output)
-        integer i; real t, v(2*nn), output(3,pts); optional output
+subroutine dump(t, state, output)
+        integer i; real t, state(3*nn), output(3,pts); optional output
         
         ! store resampled output if requested
         if (present(output)) then
-                output(1,:) = matmul(Q,v(1:nn))
-                output(2,:) = matmul(Q,matmul(S,v(nn+1:nn+nn)))
-                output(2,:) = output(2,:) - output(2,1) 
-                !output(3,:) = matmul(U,v(1:nn))*output(2,:)
+                output(1,:) = matmul(Q,state(1:nn))
+                output(2,:) = matmul(Q,state(nn+1:2*nn))
+                output(3,:) = matmul(Q,state(2*nn+1:3*nn))
         end if
         
         ! dump solution on collocation nodes
         do i = 1,nn
-                write (*,'(2F24.16,2G24.16)') t, x(i), v(i), v(nn+i)
+                write (*,'(2F24.16,3G24.16)') t, x(i), state([0:2]*nn + i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)
@@ -247,7 +255,7 @@ end subroutine
 
 ! 10th order implicit Gauss-Legendre integrator
 subroutine gl10(y, dt)
-        integer, parameter :: s = 5, n = 2*nn
+        integer, parameter :: s = 5, n = 3*nn
         real y(n), g(n,s), dt; integer i, k
         
         ! Butcher tableau for 10th order Gauss-Legendre method
