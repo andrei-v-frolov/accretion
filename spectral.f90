@@ -8,9 +8,9 @@
 ! coordinate y = x/sqrt(1+x^2), or inversely x = y/sqrt(1-y^2)
 ! 
 ! absorbing boundary conditions are implemented using perfectly matched layers,
-! applied to flux-conservative form of the wave equation
+! applied to flux-conservative form of the free wave equation along the lines
 !   du/dt = dv/dx - gamma*u, dv/dt = du/dx - gamma*v
-! for auxilliary variables u = dphi/dt, v = dphi/dx and damping factor gamma
+! with auxilliary variables u = dphi/dt, v = dphi/dx and damping factor gamma
 ! 
 ! time integration is done using Gauss-Legendre method, which is A-stable
 ! and symplectic for Hamiltonian problems, as we have here
@@ -55,8 +55,8 @@ real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in
 ! this is exactly what you think it is...
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
-! collocation grid, metric functions, force term, damping, and phase space vector [phi,u,v]
-real theta(nn), x(nn), F(nn), gamma(nn), state(3*nn)
+! collocation grid, metric functions, force term, damping, and phase space vector [phi,u,v,w]
+real theta(nn), x(nn), F(nn), gamma(nn), state(4*nn)
 
 ! spectral integration, differentiation, Laplacian, and prolongation operators
 real S(nn,nn), D(nn,nn), L(nn,nn), Q(pts,nn)
@@ -82,9 +82,9 @@ if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you 
 F = 0.0
 
 ! initial field and velocity profiles
-associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn))
+associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
         phi = phi0*exp(-(x-1.0)**2*8.0); !call static(phi)
-        u = 0.0; v = matmul(D,phi)
+        u = 0.0; v = matmul(D,phi); w = 0.0
 end associate
 
 ! output initial conditions
@@ -189,11 +189,12 @@ end subroutine initl
 
 ! evaluate equations of motion
 subroutine evalf(y, dydt)
-        real, dimension(3*nn) :: y, dydt
+        real, dimension(4*nn) :: y, dydt
         
         ! unmangle phase space vector contents into human-readable form
-        associate (phi => y(1:nn), u => y(nn+1:2*nn), v => y(2*nn+1:3*nn), dphi => dydt(1:nn), dudt => dydt(nn+1:2*nn), dvdt => dydt(2*nn+1:3*nn))
-                dphi = u; dudt = matmul(D,v) - (DV(phi)-F) - gamma*u; dvdt = matmul(D,u) - gamma*v
+        associate (phi => y(1:nn), u => y(nn+1:2*nn), v => y(2*nn+1:3*nn), w => y(3*nn+1:4*nn), &
+                  dphi => dydt(1:nn), dudt => dydt(nn+1:2*nn), dvdt => dydt(2*nn+1:3*nn), dwdt => dydt(3*nn+1:4*nn))
+                dphi = u-w; dudt = matmul(D,v) - gamma*u; dvdt = matmul(D,u-w) - gamma*v; dwdt = (DV(phi)-F) 
         end associate
 end subroutine evalf
 
@@ -235,7 +236,7 @@ end subroutine static
 
 ! dump simulation data in plain text format
 subroutine dump(t, state, output)
-        integer i; real t, state(3*nn), output(3,pts); optional output
+        integer i; real t, state(4*nn), output(3,pts); optional output
         
         ! store resampled output if requested
         if (present(output)) then
@@ -246,7 +247,7 @@ subroutine dump(t, state, output)
         
         ! dump solution on collocation nodes
         do i = 1,nn
-                write (*,'(2F24.16,3G24.16)') t, x(i), state([0:2]*nn + i)
+                write (*,'(2F24.16,4G24.16)') t, x(i), state([0:3]*nn + i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)
@@ -255,7 +256,7 @@ end subroutine
 
 ! 10th order implicit Gauss-Legendre integrator
 subroutine gl10(y, dt)
-        integer, parameter :: s = 5, n = 3*nn
+        integer, parameter :: s = 5, n = 4*nn
         real y(n), g(n,s), dt; integer i, k
         
         ! Butcher tableau for 10th order Gauss-Legendre method
