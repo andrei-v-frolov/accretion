@@ -61,8 +61,8 @@ real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 ! collocation grid, metric functions, force term, damping, and phase space vector [phi,u,v,w]
 real theta(nn), x(nn), F(nn), gamma(nn), state(4*nn)
 
-! spectral integration, differentiation, Laplacian, and prolongation operators
-real S(nn,nn), D(nn,nn), L(nn,nn), Q(pts,nn)
+! spectral derivative, Laplacian, and prolongation operators
+real D(nn,nn), L(nn,nn), Q(pts,nn)
 
 ! field evolution history for binary output, resampled on an uniform grid
 ! this can be a rather large array, so it is best to allocate it dynamically
@@ -133,43 +133,19 @@ subroutine evalb(n, pts, theta, Tn, Tnx, Tnxx)
         if (present(Tnxx)) Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
 end subroutine evalb
 
-! integrate rational Chebyshev basis on a grid theta
-subroutine integrate(nn, pts, theta, In)
-        integer n, nn, pts
-        real, dimension(pts), intent(in) :: theta
-        real, dimension(nn,pts), intent(out) :: In
-        
-        ! we are expecting quite a large number of modes, so this should never trigger
-        if (nn < 4) pause "Integration of Chebyshev basis is coded up for at least four modes"
-        
-        ! lowest four integrals
-        In(1,:) = 1.0/tan(theta)
-        In(2,:) = 1.0/sin(theta)
-        In(3,:) = 2.0*theta + In(1,:)
-        In(4,:) = (3.0 - 2.0*cos(2*theta))*In(2,:)
-        
-        ! compute higher order ones using recursion
-        do n = 2,nn-3
-                In(n+3,:) = (4.0/n)*sin(n*theta) + 2.0*In(n+1,:) - In(n-1,:)
-        end do
-end subroutine integrate
-
 ! initialize Laplacian operator matrix
 subroutine initl()
-        integer, parameter :: ia = 1, ib = nn, ka = ib+1, kb = ib+nn, la = kb+1, lb = kb+nn, xa = lb+1, xb = lb+pts, ops = xb
+        integer, parameter :: ia = 1, ib = nn, la = ib+1, lb = ib+nn, xa = lb+1, xb = lb+pts, ops = xb
         integer i, pivot(nn), status; real x(pts), grid(pts), A(nn,nn), B(nn,ops)
         
         ! output is resampled onto a uniform grid in x
         forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1); grid = acos(x/sqrt(1.0 + x**2))
         
         ! evaluate basis and differential operator values on collocation and output grids
-        do i = 1,nn; associate (basis => A(i,:), grad => B(i,ka:kb), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
+        do i = 1,nn; associate (basis => A(i,:), grad => B(i,ia:ib), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
                 call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian)
                 call evalb(i-1, pts, grid, resampled)
         end associate; end do
-        
-        ! integrate basis on collocation grid
-        call integrate(nn, nn, theta, B(:,ia:ib))
         
         ! find linear operator matrices
         status = 0; select case (kind(A))
@@ -182,8 +158,7 @@ subroutine initl()
         if (status /= 0) call abort
         
         ! to evaluate Laplacian of function f, simply do matmul(L,f)
-        S = transpose(B(:,ia:ib))
-        D = transpose(B(:,ka:kb))
+        D = transpose(B(:,ia:ib))
         L = transpose(B(:,la:lb))
         
         ! to resample function f to output grid, simply do matmul(Q,f)
