@@ -6,14 +6,17 @@
 ! as we are looking for smooth solutions, the method of choice to calculate
 ! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
 ! coordinate y = x/sqrt(1+x^2), or inversely x = y/sqrt(1-y^2)
+! [http://www.isbnsearch.org/isbn/0486411834]
 ! 
 ! absorbing boundary conditions are implemented using perfectly matched layers,
 ! applied to flux-conservative form of the free wave equation along the lines
 !   du/dt = dv/dx - gamma*u, dv/dt = du/dx - gamma*v
 ! with auxilliary variables u = dphi/dt, v = dphi/dx and damping factor gamma
+! [http://math.mit.edu/~stevenj/18.369/pml.pdf]
 ! 
 ! time integration is done using Gauss-Legendre method, which is A-stable
 ! and symplectic for Hamiltonian problems, as we have here
+! [http://www.jstor.org/stable/2003405]
 ! 
 ! spherical collapse in scalar-tensor theories usually reduces to this type
 ! of PDE's given a proper field and coordinate choice, e.g. hep-th/0409117
