@@ -58,8 +58,11 @@ real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in
 ! this is exactly what you think it is...
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
-! collocation grid, metric functions, force term, damping, and phase space vector [phi,u,v,w]
-real theta(nn), x(nn), F(nn), gamma(nn), state(4*nn)
+! collocation grid, metric functions, force term, and damping profile
+real theta(nn), x(nn), F(nn), gamma(nn)
+
+! phase space state vector packs [phi,u,v,w] into a single array
+real state(4*nn)
 
 ! spectral derivative, Laplacian, and prolongation operators
 real D(nn,nn), L(nn,nn), Q(pts,nn)
@@ -75,7 +78,7 @@ integer i
 ! allocate storage for field evolution
 allocate(history(3,pts,tt+1), source=0.0)
 
-! initialize grid and linear operators (Laplacian L and prolongation Q)
+! initialize grid and linear operators (derivative D, Laplacian L, and prolongation Q)
 call initg(); call initl()
 
 ! sanity check on the time step value selected
@@ -114,12 +117,12 @@ subroutine initg()
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
-        ! PML absorption 
+        ! tortoise coordinate and metric functions
+        x = cos(theta)/sin(theta)
         
-        x = cos(theta)/sin(theta); gamma = 0.0; !gamma(1:nn/2) = 10.0
-        
-        !forall (i=1:nn) gamma(i) = 100.0/cosh(9.0*(i-1)/(pml-1))**2 + 100.0/cosh(9.0*(i-nn)/(pml-1))**2
-        forall (i=1:nn) gamma(i) = 100.0*(exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2))
+        ! PML absorption profile is truncated Gaussian (compactly supported on about 3*pml nodes each)
+        forall (i=1:nn) gamma(i) = exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2) - 1.25e-4
+        where (gamma < 0.0) gamma = 0.0; gamma = (0.5/dt)/gamma(1) * gamma
 end subroutine initg
 
 ! evaluate rational Chebyshev basis on a grid theta
@@ -133,7 +136,7 @@ subroutine evalb(n, pts, theta, Tn, Tnx, Tnxx)
         if (present(Tnxx)) Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
 end subroutine evalb
 
-! initialize Laplacian operator matrix
+! initialize linear spectral operator matrices (derivative D, Laplacian L, and prolongation Q)
 subroutine initl()
         integer, parameter :: ia = 1, ib = nn, la = ib+1, lb = ib+nn, xa = lb+1, xb = lb+pts, ops = xb
         integer i, pivot(nn), status; real x(pts), grid(pts), A(nn,nn), B(nn,ops)
@@ -157,11 +160,13 @@ subroutine initl()
         ! bail at first sign of trouble
         if (status /= 0) call abort
         
-        ! to evaluate Laplacian of function f, simply do matmul(L,f)
+        ! to evaluate derivative of a function f, simply do matmul(D,f)
         D = transpose(B(:,ia:ib))
+        
+        ! to evaluate Laplacian of a function f, simply do matmul(L,f)
         L = transpose(B(:,la:lb))
         
-        ! to resample function f to output grid, simply do matmul(Q,f)
+        ! to resample a function f to output grid, simply do matmul(Q,f)
         Q = transpose(B(:,xa:xb))
 end subroutine initl
 
@@ -217,11 +222,11 @@ subroutine dump(t, state, output)
         integer i; real t, state(4*nn), output(3,pts); optional output
         
         ! store resampled output if requested
-        if (present(output)) then
-                output(1,:) = matmul(Q,state(1:nn))
-                output(2,:) = matmul(Q,state(nn+1:2*nn))
-                output(3,:) = matmul(Q,state(2*nn+1:3*nn))
-        end if
+        if (present(output)) then; associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
+                output(1,:) = matmul(Q,phi)
+                output(2,:) = matmul(Q,u-w)
+                output(3,:) = matmul(Q,v)
+        end associate; end if
         
         ! dump solution on collocation nodes
         do i = 1,nn
