@@ -85,8 +85,12 @@ if (output$fit) allocate(history(3,pts,tt+1), source=0.0)
 ! initialize grid and linear operators (derivative D, Laplacian L, and prolongation Q)
 call initg(); call initl()
 
-! sanity check on the time step value selected
+! sanity checks on the time step value selected
 if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
+if (sqrt(DDV(phi0))*dt > 0.25) pause "Time step will not resolve mass scale, do you really want to run?"
+
+! sanity checks on the output grid extent selected
+if (x0 > maxval(x, gamma == 0.0)) pause "Output grid will include boundary layer, do you really want to run?"
 
 ! force term corresponding to matter distributuion truncated at 6M
 F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0
@@ -257,7 +261,7 @@ subroutine dump(t, state, output)
         
         ! dump solution on collocation nodes
         do i = 1,nn
-                write (*,'(3F24.16,4G24.16)') t, x(i), r(i), state([0:3]*nn + i)
+                if (gamma(i) == 0.0) write (*,'(3F24.16,4G24.16)') t, x(i), r(i), state([0:3]*nn + i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)
