@@ -56,6 +56,9 @@ integer, parameter :: pml = 2**4                ! perfectly matched layer (suppo
 integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
 
+logical, parameter :: output$log = .true.       ! output plain text log to stdout while code is running
+logical, parameter :: output$fit = .true.       ! output binary data to FITS file when simulation ends
+
 ! this is exactly what you think it is...
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
@@ -77,7 +80,7 @@ real, allocatable :: history(:,:,:)
 integer i
 
 ! allocate storage for field evolution
-allocate(history(3,pts,tt+1), source=0.0)
+if (output$fit) allocate(history(3,pts,tt+1), source=0.0)
 
 ! initialize grid and linear operators (derivative D, Laplacian L, and prolongation Q)
 call initg(); call initl()
@@ -103,7 +106,7 @@ do i = 1,tt
 end do
 
 ! write entire evolution history into a FITS file
-call write2fits('output.fits', history, [-x0,x0], [0.0,tt*dt], ['phi','pi','flux'], '(x,t)')
+if (output$fit) call write2fits('output.fits', history, [-x0,x0], [0.0,tt*dt], ['phi','pi','flux'], '(x,t)')
 
 contains
 
@@ -243,11 +246,14 @@ subroutine dump(t, state, output)
         integer i; real t, state(4*nn), output(3,pts); optional output
         
         ! store resampled output if requested
-        if (present(output)) then; associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
+        if (output$fit .and. present(output)) then; associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
                 output(1,:) = matmul(Q,phi)
                 output(2,:) = matmul(Q,u-w)
-                output(3,:) = matmul(Q,v)
+                output(3,:) = matmul(Q,v)*output(2,:)
         end associate; end if
+        
+        ! bail unless evolution log is requested
+        if (.not. output$log) return
         
         ! dump solution on collocation nodes
         do i = 1,nn
