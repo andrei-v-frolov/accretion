@@ -7,9 +7,17 @@
 ! as we are looking for smooth solutions, the method of choice to calculate
 ! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
 ! coordinate y = x/sqrt(1+x^2), or inversely x = y/sqrt(1-y^2)
+! [http://www.isbnsearch.org/isbn/0486411834]
+! 
+! absorbing boundary conditions are implemented using perfectly matched layers,
+! applied to flux-conservative form of the free wave equation along the lines
+!   du/dt = dv/dx - gamma*u, dv/dt = du/dx - gamma*v
+! with auxilliary variables u = dphi/dt, v = dphi/dx and damping factor gamma
+! [http://math.mit.edu/~stevenj/18.369/pml.pdf]
 ! 
 ! time integration is done using Gauss-Legendre method, which is A-stable
 ! and symplectic for Hamiltonian problems, as we have here
+! [http://www.jstor.org/stable/2003405]
 ! 
 ! spherical collapse in scalar-tensor theories usually reduces to this type
 ! of PDE's given a proper field and coordinate choice, e.g. hep-th/0409117
@@ -36,23 +44,29 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-program wave; use fitsio; use starobinsky, only : phi0, DV, DDV; implicit none
+program wave; use fitsio; use massive, only : phi0, DV, DDV; implicit none
 
 ! solver control parameters
 integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
-integer, parameter :: tt = 2**11                ! total number of time steps to take (i.e. runtime)
+integer, parameter :: tt = 2**13                ! total number of time steps to take (i.e. runtime)
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
 
 ! output control parameters
-integer, parameter :: pts = 2**10 + 1           ! number of points on an uniform-spaced output grid
+integer, parameter :: pml = 2**4                ! perfectly matched layer (supported on 3*pml nodes)
+integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
 
 ! this is exactly what you think it is...
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
-! collocation grid, metric functions, and spectral Laplacian operator
-! phase space state vector v packs phi (1:nn) and dot(phi) (nn+1:nn+nn)
-real theta(nn), x(nn), r(nn), g(nn), F(nn), L(nn,nn), Q(pts,nn), U(pts,nn), v(2*nn)
+! collocation grid, metric functions, force term, and damping profile
+real theta(nn), x(nn), r(nn), g(nn), F(nn), gamma(nn)
+
+! phase space state vector packs [phi,u,v,w] into a single array
+real state(4*nn)
+
+! spectral derivative, Laplacian, and prolongation operators
+real D(nn,nn), L(nn,nn), Q(pts,nn)
 
 ! field evolution history for binary output, resampled on an uniform grid
 ! this can be a rather large array, so it is best to allocate it dynamically
@@ -65,24 +79,27 @@ integer i
 ! allocate storage for field evolution
 allocate(history(3,pts,tt+1), source=0.0)
 
-! initialize grid and linear operators (Laplacian L and prolongation Q)
+! initialize grid and linear operators (derivative D, Laplacian L, and prolongation Q)
 call initg(); call initl()
 
 ! sanity check on the time step value selected
 if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
 
-! initial field and velocity profiles
-v(1:nn) = phi0; v(nn+1:2*nn) = 0.0
-
 ! force term corresponding to matter distributuion truncated at 6M
-F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0; call static(v(1:nn))
+F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0
+
+! initial field and velocity profiles
+associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
+        phi = phi0; !call static(phi)
+        u = 0.0; v = (r*r) * matmul(D,phi); w = 0.0
+end associate
 
 ! output initial conditions
-call dump(0.0, v, history(:,:,1))
+call dump(0.0, state, history(:,:,1))
 
 ! main time evolution loop
 do i = 1,tt
-        call gl10(v, dt); call dump(i*dt, v, history(:,:,i+1))
+        call gl10(state, dt); call dump(i*dt, state, history(:,:,i+1))
 end do
 
 ! write entire evolution history into a FITS file
@@ -121,78 +138,72 @@ subroutine initg()
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
+        ! tortoise coordinate and metric functions
         x = cos(theta)/sin(theta); r = radius(x); g = 1.0 - 1.0/r
+        
+        ! PML absorption profile is truncated Gaussian (compactly supported on about 3*pml nodes each)
+        forall (i=1:nn) gamma(i) = exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2) - 1.25e-4
+        where (gamma < 0.0) gamma = 0.0; gamma = (0.5/dt)/gamma(1) * gamma
 end subroutine initg
 
-! evaluate rational Chebyshev basis on collocation grid theta
-subroutine evalb(n, pts, theta, Tn, Dn, p, q)
-        integer n, pts, mode; real, dimension(pts) :: theta, p, q, Tn, Tnx, Tnxx, Dn
-        intent(in) n, pts, theta, p, q; intent(out) Tn, Dn; optional p, q, Dn
+! evaluate rational Chebyshev basis on a grid theta
+subroutine evalb(n, pts, theta, Tn, Tnx, Tnxx)
+        integer n, pts; real, dimension(pts), intent(in) :: theta
+        real, dimension(pts), intent(out), optional :: Tn, Tnx, Tnxx
         
         ! Chebyshev basis and its derivatives
-        Tn = cos(n*theta)
-        if (.not. present(Dn)) return
-        Tnx = n * sin(n*theta) * sin(theta)**2
-        Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
-        
-        ! Dn is a linear combination of first and second derivatives with coefficients p and q
-        mode = 0; if (present(p)) mode = mode+2; if (present(q)) mode = mode+1
-        
-        ! Laplacian operator for Schwarzschild metric has q = 2.0*g/r
-        select case (mode)
-        	case(3); Dn = p*Tnxx + q*Tnx    ! both p and q are specified
-        	case(2); Dn = p*Tnx             ! q is omitted, assume q = 0
-        	case(1); Dn = Tnxx + q*Tnx      ! p is omitted, assume p = 1
-        	case(0); Dn = Tnxx              ! both p and q are omitted
-        end select
+        if (present(Tn))   Tn = cos(n*theta)
+        if (present(Tnx))  Tnx = n * sin(n*theta) * sin(theta)**2
+        if (present(Tnxx)) Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
 end subroutine evalb
 
-! initialize Laplacian operator matrix
+! initialize linear spectral operator matrices (derivative D, Laplacian L, and prolongation Q)
 subroutine initl()
-        integer i, pivot(nn), status; real x(pts), grid(pts), area(pts), A(nn,nn), B(nn,nn+pts+pts)
+        integer, parameter :: ia = 1, ib = nn, la = ib+1, lb = ib+nn, xa = lb+1, xb = lb+pts, ops = xb
+        integer i, pivot(nn), status; real x(pts), grid(pts), A(nn,nn), B(nn,ops)
         
         ! output is resampled onto a uniform grid in x
-        forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1)
-        grid = acos(x/sqrt(1.0 + x**2)); area = 4.0*pi*radius(x)**2
+        forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1); grid = acos(x/sqrt(1.0 + x**2))
         
         ! evaluate basis and differential operator values on collocation and output grids
-        do i = 1,nn; associate (basis => A(i,:), laplacian => B(i,1:nn), resampled => B(i,nn+1:nn+pts), gradient => B(i,nn+pts+1:nn+pts+pts))
-                call evalb(i-1, nn, theta, basis, laplacian, q=2.0*g/r)
-                call evalb(i-1, pts, grid, resampled, gradient, p=area)
+        do i = 1,nn; associate (basis => A(i,:), grad => B(i,ia:ib), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
+                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian); laplacian = laplacian + (2.0*g/r) * grad
+                call evalb(i-1, pts, grid, resampled)
         end associate; end do
         
         ! find linear operator matrices
         status = 0; select case (kind(A))
-                case(4); call sgesv(nn, nn+pts+pts, A, nn, pivot, B, nn, status)
-                case(8); call dgesv(nn, nn+pts+pts, A, nn, pivot, B, nn, status)
+                case(4); call sgesv(nn, ops, A, nn, pivot, B, nn, status)
+                case(8); call dgesv(nn, ops, A, nn, pivot, B, nn, status)
                 case default; call abort
         end select
         
         ! bail at first sign of trouble
         if (status /= 0) call abort
         
-        ! to evaluate Laplacian of function f, simply do matmul(L,f)
-        L = transpose(B(:,1:nn))
+        ! to evaluate derivative of a function f, simply do matmul(D,f)
+        D = transpose(B(:,ia:ib))
         
-        ! to resample function f to output grid, simply do matmul(Q,f)
-        Q = transpose(B(:,nn+1:nn+pts))
+        ! to evaluate Laplacian of a function f, simply do matmul(L,f)
+        L = transpose(B(:,la:lb))
         
-        ! to resample gradient f to output grid, simply do matmul(U,f)
-        U = transpose(B(:,nn+pts+1:nn+pts+pts))
+        ! to resample a function f to output grid, simply do matmul(Q,f)
+        Q = transpose(B(:,xa:xb))
 end subroutine initl
 
 ! evaluate equations of motion
-subroutine evalf(v, dvdt)
-        real v(2*nn), dvdt(2*nn)
+subroutine evalf(y, dydt)
+        real, dimension(4*nn) :: y, dydt
         
-        ! unmangle phase space state vector contents into human-readable form
-        associate (phi => v(1:nn), pi => v(nn+1:2*nn), dphi => dvdt(1:nn), dpi => dvdt(nn+1:2*nn))
-                dphi = pi; dpi = matmul(L,phi) - g*(DV(phi) - F)
+        ! unmangle phase space vector contents into human-readable form
+        associate (phi => y(1:nn), u => y(nn+1:2*nn), v => y(2*nn+1:3*nn), w => y(3*nn+1:4*nn), &
+                  dphi => dydt(1:nn), dudt => dydt(nn+1:2*nn), dvdt => dydt(2*nn+1:3*nn), dwdt => dydt(3*nn+1:4*nn))
+                dphi = u-w; dudt = matmul(D,v)/(r*r) - gamma*u; dvdt = matmul(D,u-w)*(r*r) - gamma*v; dwdt = g*(DV(phi) - F)
         end associate
 end subroutine evalf
 
 ! solve linear Laplace problem [L - m_eff^2] phi = RHS
-! for massive scalar field, static phi = lsolve(m2*g, -g*F)
+! for massive scalar field, static phi = lsolve(g*m^2, -g*F)
 function lsolve(m2eff, rhs)
         real lsolve(nn), m2eff(nn), rhs(nn), A(nn,nn), B(nn,1)
         integer i, pivot(nn), status
@@ -223,25 +234,24 @@ subroutine static(phi)
         real phi(nn); integer i
         
         do i = 1,16
-                !write (*,*) i, sum((g*(DV(phi) - F) - matmul(L,phi))**2)
                 phi = phi + lsolve(g*DDV(phi), g*(DV(phi) - F) - matmul(L,phi))
         end do
 end subroutine static
 
 ! dump simulation data in plain text format
-subroutine dump(t, v, output)
-        integer i; real t, v(2*nn), output(3,pts); optional output
+subroutine dump(t, state, output)
+        integer i; real t, state(4*nn), output(3,pts); optional output
         
         ! store resampled output if requested
-        if (present(output)) then
-                output(1,:) = matmul(Q,v(1:nn))
-                output(2,:) = matmul(Q,v(nn+1:nn+nn))
-                output(3,:) = matmul(U,v(1:nn))*output(2,:)
-        end if
+        if (present(output)) then; associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
+                output(1,:) = matmul(Q,phi)
+                output(2,:) = matmul(Q,u-w)
+                output(3,:) = matmul(Q,v)
+        end associate; end if
         
         ! dump solution on collocation nodes
         do i = 1,nn
-                write (*,'(3F24.16,3G24.16)') t, x(i), r(i), v(i), v(nn+i)
+                write (*,'(3F24.16,4G24.16)') t, x(i), r(i), state([0:3]*nn + i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)
@@ -250,7 +260,7 @@ end subroutine
 
 ! 10th order implicit Gauss-Legendre integrator
 subroutine gl10(y, dt)
-        integer, parameter :: s = 5, n = 2*nn
+        integer, parameter :: s = 5, n = 4*nn
         real y(n), g(n,s), dt; integer i, k
         
         ! Butcher tableau for 10th order Gauss-Legendre method
