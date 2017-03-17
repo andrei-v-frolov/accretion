@@ -1,7 +1,8 @@
-! tutorial code solving 1D wave equation Box[phi] = m^2 phi in flat metric
-!   ds^2 = -dt^2 + dx^2, 
-! where d'Alembert operator is
-!   Box[phi] = [-(d/dt)^2 + (d/dx)^2] phi(x,t)
+! tutorial code solving 1D wave equation Box[phi] = m^2 phi in Schwarzschield metric
+!   ds^2 = -g(r) dt^2 + dr^2/g(r) + r^2 dOmega^2, g(r) = 1-2M/r
+! in tortoise coordinates dx = dr/g(r) where d'Alembert operator becomes
+!   g(r) Box[phi] = [-(d/dt)^2 + (d/dx)^2 + 2 g(r)/r (d/dx)] phi(x,t)
+! which is a 1D wave equation with radial damping profile leading to back-scatter
 ! 
 ! as we are looking for smooth solutions, the method of choice to calculate
 ! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
@@ -51,7 +52,7 @@ integer, parameter :: tt = 2**13                ! total number of time steps to 
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
 
 ! output control parameters
-integer, parameter :: pml = 2**4                ! perfectly matched layer depth
+integer, parameter :: pml = 2**4                ! perfectly matched layer (supported on 3*pml nodes)
 integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
 
@@ -59,7 +60,7 @@ real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
 ! collocation grid, metric functions, force term, and damping profile
-real theta(nn), x(nn), F(nn), gamma(nn)
+real theta(nn), x(nn), r(nn), g(nn), F(nn), gamma(nn)
 
 ! phase space state vector packs [phi,u,v,w] into a single array
 real state(4*nn)
@@ -85,12 +86,12 @@ call initg(); call initl()
 if (dt > x(nn/2+1)-x(nn/2)) pause "Time step violates Courant condition, do you really want to run?"
 
 ! force term corresponding to matter distributuion truncated at 6M
-F = 0.0
+F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0
 
 ! initial field and velocity profiles
 associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
-        phi = phi0*exp(-(x-1.0)**2*8.0); !call static(phi)
-        u = 0.0; v = matmul(D,phi); w = 0.0
+        phi = phi0; !call static(phi)
+        u = 0.0; v = (r*r) * matmul(D,phi); w = 0.0
 end associate
 
 ! output initial conditions
@@ -109,6 +110,26 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+! areal radius r from tortoise coordinate x (in units of 2M)
+elemental function radius(x)
+        real radius, x, q, r; intent(in) :: x; integer i
+        
+        ! closer to horizon, radius is 2M to all significant digits
+        radius = 1.0; if (x < -(digits(x)-5)*log(2.0)) return
+        
+        ! refine q instead of r = 1.0 + log(1.0+exp(q)); initial guess
+        q = x - 1.0
+        
+        ! Newton's iteration for x = r + log(r-1.0) as a function of q
+        do i = 1,16
+                r = 1.0 + log(1.0+exp(q))
+                q = q - (r + log(r-1.0) - x) * (1.0 - 1.0/r) * (1.0 + exp(-q))
+        end do
+        
+        ! find converged radius value
+        radius = 1.0 + log(1.0+exp(q))
+end function radius
+
 ! initialize Gauss-Lobatto collocation grid
 subroutine initg()
         integer i
@@ -118,7 +139,7 @@ subroutine initg()
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
         ! tortoise coordinate and metric functions
-        x = cos(theta)/sin(theta)
+        x = cos(theta)/sin(theta); r = radius(x); g = 1.0 - 1.0/r
         
         ! PML absorption profile is truncated Gaussian (compactly supported on about 3*pml nodes each)
         forall (i=1:nn) gamma(i) = exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2) - 1.25e-4
@@ -146,7 +167,7 @@ subroutine initl()
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), grad => B(i,ia:ib), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
-                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian)
+                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian); laplacian = laplacian + (2.0*g/r) * grad
                 call evalb(i-1, pts, grid, resampled)
         end associate; end do
         
@@ -177,12 +198,12 @@ subroutine evalf(y, dydt)
         ! unmangle phase space vector contents into human-readable form
         associate (phi => y(1:nn), u => y(nn+1:2*nn), v => y(2*nn+1:3*nn), w => y(3*nn+1:4*nn), &
                   dphi => dydt(1:nn), dudt => dydt(nn+1:2*nn), dvdt => dydt(2*nn+1:3*nn), dwdt => dydt(3*nn+1:4*nn))
-                dphi = u-w; dudt = matmul(D,v) - gamma*u; dvdt = matmul(D,u-w) - gamma*v; dwdt = (DV(phi)-F) 
+                dphi = u-w; dudt = matmul(D,v)/(r*r) - gamma*u; dvdt = matmul(D,u-w)*(r*r) - gamma*v; dwdt = g*(DV(phi) - F)
         end associate
 end subroutine evalf
 
 ! solve linear Laplace problem [L - m_eff^2] phi = RHS
-! for massive scalar field, static phi = lsolve(m2, -F)
+! for massive scalar field, static phi = lsolve(g*m^2, -g*F)
 function lsolve(m2eff, rhs)
         real lsolve(nn), m2eff(nn), rhs(nn), A(nn,nn), B(nn,1)
         integer i, pivot(nn), status
@@ -213,7 +234,7 @@ subroutine static(phi)
         real phi(nn); integer i
         
         do i = 1,16
-                phi = phi + lsolve(DDV(phi), (DV(phi) - F) - matmul(L,phi))
+                phi = phi + lsolve(g*DDV(phi), g*(DV(phi) - F) - matmul(L,phi))
         end do
 end subroutine static
 
@@ -230,7 +251,7 @@ subroutine dump(t, state, output)
         
         ! dump solution on collocation nodes
         do i = 1,nn
-                write (*,'(2F24.16,4G24.16)') t, x(i), state([0:3]*nn + i)
+                write (*,'(3F24.16,4G24.16)') t, x(i), r(i), state([0:3]*nn + i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)
