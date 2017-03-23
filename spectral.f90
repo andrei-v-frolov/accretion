@@ -6,7 +6,7 @@
 ! 
 ! as we are looking for smooth solutions, the method of choice to calculate
 ! spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified
-! coordinate y = x/sqrt(1+x^2), or inversely x = y/sqrt(1-y^2)
+! coordinate y = x/sqrt(l^2+x^2), or inversely x/l = y/sqrt(1-y^2)
 ! [http://www.isbnsearch.org/isbn/0486411834]
 ! 
 ! absorbing boundary conditions are implemented using perfectly matched layers,
@@ -50,6 +50,7 @@ program wave; use fitsio; use massive, only : phi0, DV, DDV; implicit none
 integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
 integer, parameter :: tt = 2**13                ! total number of time steps to take (i.e. runtime)
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
+real,    parameter :: ell = 2.0                 ! grid compactification scale (set to 2.0 if in doubt)
 
 ! output control parameters
 integer, parameter :: pml = 2**4                ! perfectly matched layer (supported on 3*pml nodes)
@@ -146,7 +147,7 @@ subroutine initg()
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
         ! tortoise coordinate and metric functions
-        x = cos(theta)/sin(theta); r = radius(x); g = 1.0 - 1.0/r
+        x = ell/tan(theta); r = radius(x); g = 1.0 - 1.0/r
         
         ! PML absorption profile is truncated Gaussian (compactly supported on about 3*pml nodes each)
         forall (i=1:nn) gamma(i) = exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2) - 1.25e-4
@@ -160,8 +161,8 @@ subroutine evalb(n, pts, theta, Tn, Tnx, Tnxx)
         
         ! Chebyshev basis and its derivatives
         if (present(Tn))   Tn = cos(n*theta)
-        if (present(Tnx))  Tnx = n * sin(n*theta) * sin(theta)**2
-        if (present(Tnxx)) Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3
+        if (present(Tnx))  Tnx = n * sin(n*theta) * sin(theta)**2/ell
+        if (present(Tnxx)) Tnxx = -n * (n*cos(n*theta)*sin(theta) + 2.0*sin(n*theta)*cos(theta)) * sin(theta)**3/ell**2
 end subroutine evalb
 
 ! initialize linear spectral operator matrices (derivative D, Laplacian L, and prolongation Q)
@@ -170,7 +171,7 @@ subroutine initl()
         integer i, pivot(nn), status; real x(pts), grid(pts), A(nn,nn), B(nn,ops)
         
         ! output is resampled onto a uniform grid in x
-        forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1); grid = acos(x/sqrt(1.0 + x**2))
+        forall (i=1:pts) x(i) = (2*i-1-pts)*x0/(pts-1); grid = acos(x/sqrt(ell**2 + x**2))
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), grad => B(i,ia:ib), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
