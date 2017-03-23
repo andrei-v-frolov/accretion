@@ -248,7 +248,7 @@ end subroutine static
 
 ! dump simulation data in plain text format
 subroutine dump(t, state, output)
-        integer i; real t, state(4*nn), output(3,pts); optional output
+        integer i; real t, state(4*nn), output(3,pts), residual(nn); optional output
         
         ! store resampled output if requested
         if (output$fit .and. present(output)) then; associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
@@ -260,9 +260,12 @@ subroutine dump(t, state, output)
         ! bail unless evolution log is requested
         if (.not. output$log) return
         
+        ! this should vanish if integration is perfect
+        residual = (r*r) * matmul(D,state(1:nn)) - state(2*nn+1:3*nn)
+        
         ! dump solution on collocation nodes
         do i = 1,nn
-                if (gamma(i) == 0.0) write (*,'(3F24.16,4G24.16)') t, x(i), r(i), state([0:3]*nn + i)
+                if (gamma(i) == 0.0) write (*,'(3F24.16,5G24.16)') t, x(i), r(i), state([0:3]*nn + i), residual(i)
         end do
         
         ! separate timesteps by empty lines (for gnuplot's benefit)
