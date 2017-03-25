@@ -1,0 +1,135 @@
+\documentclass[aps,prd,reprint,twocolumn,groupedaddress]{revtex4-1}
+
+\usepackage{amssymb,amsmath}
+\usepackage{epsfig,hyperref}
+
+\renewcommand{\vec}[1]{\mathbf{#1}}
+
+\begin{document}
+%\preprint{}
+
+\title{Scalar field accretion in Schwarzschild-like spacetimes}
+
+\author{Andrei~V.~Frolov}
+\email{frolov@sfu.ca}
+\affiliation{Physics Department, Simon Fraser University\\
+8888 University Drive, Burnaby, BC, Canada, V5A~1S6}
+
+\date{\today}
+
+\begin{abstract}
+  This note describes a tutorial code solving radial wave equation in Schwarzschild metric.  As we are looking for smooth solutions, the method of choice to calculate  spatial derivatives is pseudo-spectral, using Chebyshev basis on compactified  coordinate. Absorbing boundary conditions are implemented using perfectly matched layers,  applied to flux-conservative form of the free wave equation. Time integration is done using Gauss-Legendre method,   which is A-stable and symplectic for Hamiltonian problems. Spherical collapse in scalar-tensor theories usually reduces to this type of PDE's.
+\end{abstract}
+
+%\pacs{}
+%\keywords{}
+
+\maketitle
+
+\section{Scalar Field Equations of Motion}
+
+\begin{equation}
+  ds^2 = -g(r)\, dt^2 + \frac{dr^2}{g(r)} + r^2\, d\Omega^2
+\end{equation}
+
+\begin{equation}
+  g(r) = 1 - \frac{2M}{r}
+\end{equation}
+
+\begin{equation}
+  \Box\phi = V'(\phi) - {\cal F}
+\end{equation}
+
+\begin{eqnarray}
+  \Box\phi &=& 
+  \frac{1}{\sqrt{-g}}\, \partial_\mu \Big( \sqrt{-g}\, g^{\mu\nu}\, \partial_\nu \phi \Big)\nonumber\\ &=&
+  - \frac{1}{g(r)}\, \partial_t^2 \phi + \frac{1}{r^2}\, \partial_r \Big( r^2 g(r)\, \partial_r \phi \Big)
+\end{eqnarray}
+
+$\partial_x = g(r)\, \partial_r$
+
+\begin{equation}
+  - \partial_t^2 \phi + \frac{1}{r^2}\, \partial_x \Big( r^2\, \partial_x \phi \Big) = g \Big( V'(\phi) - {\cal F} \Big)
+\end{equation}
+
+\begin{equation}
+  x = \int \frac{dr}{g(r)} = r + 2M\,\ln\left(\frac{r}{2M} - 1\right)
+\end{equation}
+
+$u \equiv \partial_t \phi$, $v \equiv r^2 \partial_x \phi$
+
+\begin{eqnarray}
+  - \partial_t u + \frac{1}{r^2}\, \partial_x v &=& g \Big( V'(\phi) - {\cal F} \Big)\nonumber\\
+  - \partial_t v + r^2\, \partial_x u &=& 0
+\end{eqnarray}
+
+\section{Absorbing Boundary Conditions}
+
+\begin{equation}
+  x \rightarrow x + i f(x), \hspace{1em}
+  \partial_x \rightarrow \frac{\partial_x}{1 + \frac{\gamma(x)}{\partial_t}}
+\end{equation}
+
+$\partial_x f = \gamma(x)/\omega$
+
+\begin{eqnarray}
+  - (\partial_t + \gamma) u + \frac{1}{r^2}\, \partial_x v &=& \left(1 + \frac{\gamma(x)}{\partial_t}\right) \Bigg[g \Big( V'(\phi) - {\cal F} \Big)\Bigg]\nonumber\\
+  - (\partial_t + \gamma) v + r^2\, \partial_x u &=& 0
+\end{eqnarray}
+
+$u \rightarrow u+w$
+\begin{subequations}
+\begin{eqnarray}
+  \partial_t \phi &=& u-w\\
+  \partial_t u &=& \frac{1}{r^2}\, \partial_x v - \gamma u\\
+  \partial_t v &=& r^2\, \partial_x (u-w) - \gamma v\\
+  \partial_t w &=& g \Big( V'(\phi) - {\cal F} \Big)
+\end{eqnarray}
+\end{subequations}
+
+\section{Spectral Basis}
+
+\begin{equation}
+  y = \frac{x}{\sqrt{x^2+\ell^2}} = \cos\theta, \hspace{1em}
+  \frac{x}{\ell} = \frac{y}{1-y^2} = \cot\theta
+\end{equation}
+
+\begin{eqnarray}
+  T_n &=& \cos(n\theta),\\
+  \partial_x T_n &=& \frac{n}{\ell}\, \sin(n\theta)\, \sin^2\theta,\\
+  \partial_x^2 T_n &=& \frac{n}{\ell^2} \Big(n \cos(n\theta) + 2 \cot\theta \sin(n\theta)\Big) \sin^4\theta
+\end{eqnarray}
+
+\begin{equation}
+  \theta_i = \left(n-i+\frac{1}{2}\right)\,\frac{\pi}{n}, \hspace{1em}
+  x_i = \ell\cot\theta_i
+\end{equation}
+
+\section{Gauss-Legendre Integrator}
+
+\begin{equation}
+  \frac{d\vec{y}}{dt} = \vec{f}(\vec{y})
+\end{equation}
+
+\begin{equation}
+  \vec{g}^{(i)} = \vec{f}\left(\vec{y} + \Delta t \cdot \sum\limits_j a^i_j \vec{g}^{(j)}\right)
+\end{equation}
+
+\begin{equation}
+  \vec{y} = \vec{y} + \Delta t \cdot \sum\limits_i b_i \vec{g}^{(i)}
+\end{equation}
+
+\begin{equation}
+  P_n\left(2c^{(i)}-1\right) = 0
+\end{equation}
+
+\begin{eqnarray}
+  \sum\limits_j a^i_j \left[c^{(j)}\right]^{k-1} &=& \frac{1}{k}\, \left[c^{(i)}\right]^k\\
+  \sum\limits_j b_j \left[c^{(j)}\right]^{k-1} &=& \frac{1}{k}
+\end{eqnarray}
+
+
+\appendix
+\section{Inverting Tortoise Coordinate}
+
+\end{document}

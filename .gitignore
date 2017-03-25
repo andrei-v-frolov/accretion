@@ -11,6 +11,13 @@ spectral
 # compiled Python
 *.py[cod]
 
+# auxilary TeX files
+*.aux
+*.log
+*.out
+*.synctex.gz
+*Notes.bib
+
 # generated data
 *.fits
 *.pdf
