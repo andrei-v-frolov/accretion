@@ -118,24 +118,32 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+! evaluate ramp(x) = log(1+exp(x)) in an accurate way
+elemental function ramp(x)
+        real ramp, x; intent(in) x
+        
+        if (x >= 0.0) then; ramp = x + log(1.0 + exp(-x))
+        else; ramp = 2.0*atanh(exp(x)/(2.0+exp(x))); end if
+end function ramp
+
 ! areal radius r from tortoise coordinate x (in units of 2M)
 elemental function radius(x)
-        real radius, x, q, r; intent(in) :: x; integer i
+        real radius, x, q, g, dr; intent(in) x; integer i
         
         ! closer to horizon, radius is 2M to all significant digits
-        radius = 1.0; if (x < -(digits(x)-5)*log(2.0)) return
+        radius = 1.0; if (x < -digits(x)*log(2.0)) return
         
         ! refine q instead of r = 1.0 + log(1.0+exp(q)); initial guess
         q = x - 1.0
         
         ! Newton's iteration for x = r + log(r-1.0) as a function of q
         do i = 1,16
-                r = 1.0 + log(1.0+exp(q))
-                q = q - (r + log(r-1.0) - x) * (1.0 - 1.0/r) * (1.0 + exp(-q))
+                dr = ramp(q); g = dr/(1.0+dr)
+                q = q - (1.0 + dr + log(dr) - x) * g * (1.0 + exp(-q))
         end do
         
         ! find converged radius value
-        radius = 1.0 + log(1.0+exp(q))
+        radius = 1.0 + ramp(q)
 end function radius
 
 ! initialize Gauss-Lobatto collocation grid
