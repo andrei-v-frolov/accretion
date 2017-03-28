@@ -70,7 +70,7 @@ The first equation is the identical rewrite of the wave equation (\ref{eq:wave})
 
 \section{Absorbing Boundary Conditions}
 
-The scalar field degree of freedom $\phi$ asymptotes to a free field evolution near horizon (where $g \rightarrow 0$), and a massive field evolution far away from the black hole (where $V'(\phi) \rightarrow {\cal F}$). Physically, excitations in $\phi$ take infinite amount of  time $t$ to reach both boundaries, yet truncating or compactifying the evolution domain for numerical purposes will inevitably lead to spurious reflections unless special care is taken. The best technique to avoid spurious reflections is to introduce absorbing boundary conditions via Perfectly Matched Layers (PMLs), which damp the solution at  the boundaries while guaranteeing identically vanishing reflection coefficient at the absorption layer \cite{???}. This is achieved by analytic continuation of the equations of motion into the complex domain
+The scalar field degree of freedom $\phi$ asymptotes to a free field evolution near horizon (where $g \rightarrow 0$), and a massive field evolution far away from the black hole (where $V'(\phi) \rightarrow {\cal F}$). Physically, excitations in $\phi$ take infinite amount of  time $t$ to reach both boundaries, yet truncating or compactifying the evolution domain for numerical purposes will inevitably lead to spurious reflections unless special care is taken. The best technique to avoid spurious reflections is to introduce absorbing boundary conditions via Perfectly Matched Layers (PMLs), which damp the solution at  the boundaries while guaranteeing identically vanishing reflection coefficient at the absorption layer \cite{Johnson:wt}. This is achieved by analytic continuation of the equations of motion into the complex domain
 \begin{equation}
   x \rightarrow x + i f(x), \hspace{1em}
   \partial_x \rightarrow \frac{\partial_x}{1 + \frac{\gamma(x)}{\partial_t}},
@@ -130,7 +130,7 @@ Packing the scalar field variables $\phi,u,v,w$ evaluated at the collocation gri
 \begin{equation}
   \frac{d\vec{y}}{dt} = \vec{f}(\vec{y}),
 \end{equation}
-which can be integrated by an implicit Runge-Kutta method \cite{???}
+which can be integrated by an implicit Runge-Kutta method \cite{Butcher:1964fx}
 \begin{equation}
   \vec{y} \rightarrow \vec{y} + \Delta t \cdot \sum\limits_i b_i \vec{g}^{(i)},
 \end{equation}
@@ -208,5 +208,7 @@ is of order one on the entire domain of definition of $x$. Nevertheless, one has
   \end{array} \right.
 \end{equation}
 in different limits.
+
+\bibliography{accretion}
 
 \end{document}

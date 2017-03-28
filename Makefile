@@ -31,7 +31,7 @@ all: spectral
 
 clean:
 	rm -f spectral `find . -name "*.o" -or -name "*.mod" -or -name "*.py[cod]"`
-	rm -f *.aux *.log *.out *.synctex.gz *Notes.bib
+	rm -f *.aux *.blg *.log *.out *.synctex.gz *Notes.bib
 
 ################### Binaries & Dependencies ####################
 
