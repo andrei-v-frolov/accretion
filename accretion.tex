@@ -52,7 +52,7 @@ This can be reduced to a one-dimensional wave equation with constant propagation
 \end{equation}
 Explicit form of the tortoise coordinate $x$ for the Schwarzschild spacetime can be obtained by integrating
 \begin{equation}
-  x = \int \frac{dr}{g(r)} = r + 2M\,\ln\left(\frac{r}{2M} - 1\right)
+  x = \int \frac{dr}{g(r)} = r + 2M\,\ln\left(\frac{r}{2M} - 1\right).
 \end{equation}
 Tortoise coordinate $x$ is vastly preferable for numerical integration of the wave equation over areal coordinate $r$ since the characteristic speed is constant on the sampled time slice, but the added difficulty with this choice is that accurate $r(x)$ inversion is quite not-trivial numerically, as detailed in Appendix~\ref{sec:tortoise}.
 
@@ -73,14 +73,15 @@ The first equation is the identical rewrite of the wave equation (\ref{eq:wave})
 The scalar field degree of freedom $\phi$ asymptotes to a free field evolution near horizon (where $g \rightarrow 0$), and a massive field evolution far away from the black hole (where $V'(\phi) \rightarrow {\cal F}$). Physically, excitations in $\phi$ take infinite amount of  time $t$ to reach both boundaries, yet truncating or compactifying the evolution domain for numerical purposes will inevitably lead to spurious reflections unless special care is taken. The best technique to avoid spurious reflections is to introduce absorbing boundary conditions via Perfectly Matched Layers (PMLs), which damp the solution at  the boundaries while guaranteeing identically vanishing reflection coefficient at the absorption layer \cite{Johnson:wt}. This is achieved by analytic continuation of the equations of motion into the complex domain
 \begin{equation}
   x \rightarrow x + i f(x), \hspace{1em}
-  \partial_x \rightarrow \frac{\partial_x}{1 + \frac{\gamma(x)}{\partial_t}},
+  \partial_x \rightarrow \frac{\partial_x}{1 + i f'(x)} \equiv
+  \frac{\partial_x}{1 + \frac{\gamma(x)}{\partial_t}},
 \end{equation}
-which turns the oscillatory waves $e^{i\omega t}$ into exponentially suppressed functions of $x$ instead. Applying this idea to the scalar field equations of motion in flux-conservative form (\ref{eq:flux}), and choosing $\partial_x f = \gamma(x)/\omega$ for an arbitrary damping function $\gamma(x)$, we obtain
+which turns the oscillatory travelling waves $e^{ikx-i\omega t}$ into exponentially decaying functions of $x$ instead. To make attenuation length independent of $\omega$, frequency dependent contour deformation $f' = \gamma(x)/\omega$ is chosen and $i/\omega$ is transformed back into explicit integration operator in the time domain. Applying this idea to the scalar field equations of motion in flux-conservative form (\ref{eq:flux}) for an arbitrary damping function $\gamma(x)$, we obtain
 \begin{eqnarray}
   - (\partial_t + \gamma) u + \frac{1}{r^2}\, \partial_x v &=& \left(1 + \frac{\gamma(x)}{\partial_t}\right) \Bigg[g \Big( V'(\phi) - {\cal F} \Big)\Bigg],\nonumber\\
   - (\partial_t + \gamma) v + r^2\, \partial_x u &=& 0.
 \end{eqnarray}
-To get the inverse time evolution operator $\partial_t^{-1}$ into explicit form, introduction of a third auxiliary variable $w$ is in order. With re-definition $u \rightarrow u+w$, the non-reflecting PML equations of motion become
+To turn the inverse time evolution operator $\partial_t^{-1}$ into a differential equation form, introduction of a third auxiliary variable $w$ is in order. With re-definition $u \rightarrow u+w$, the non-reflecting PML equations of motion then become
 \begin{subequations}\label{eq:pml}
 \begin{eqnarray}
   \partial_t \phi &=& u-w,\\
@@ -174,7 +175,7 @@ Accurately inverting Schwarzschild tortoise coordinate
 \begin{equation}
   x = r + 2M\,\ln\left(\frac{r}{2M} - 1\right)
 \end{equation}
-to yield areal coordinate $r$ as a function of $x$ turns out to be a rather non-trivial task, despite appearances. The problem is that asymptotics for large positive $x$, where $r \simeq x - 2M \ln\left(x/2M - 1\right)$, and for large negative $x$, where $r \simeq 2M$ with exponentially suppressed metric function $\ln g \simeq x/2M - 1$, have vastly different derivatives with respect to $x$ (which hampers numerical schemes like Newton's method), and no closed form algebraic inverse.
+to yield areal coordinate $r$ as a function of $x$ turns out to be a rather non-trivial task, despite appearances. The problem is that asymptotic for large positive $x$, where $r \simeq x - 2M \ln\left(x/2M - 1\right)$, and for large negative $x$, where $r \simeq 2M$ with exponentially suppressed metric function $\ln g \simeq x/2M - 1$, have vastly different derivatives with respect to $x$ (which hampers numerical schemes like Newton's method), and no closed form algebraic inverse.
 
 %\begin{equation}
 %  \delta r = -\Bigg(r + 2M\,\ln\left(\frac{r}{2M} - 1\right) - x\Bigg) \cdot \frac{dr}{dx}, \hspace{1em}
@@ -185,7 +186,7 @@ to yield areal coordinate $r$ as a function of $x$ turns out to be a rather non-
 %  \frac{d\ln g}{dx} = \frac{(1-g)^2}{2M}
 %\end{equation}
 
-A trick that works for the entire usable range of $x$ is to solve for an approximate variable $q \simeq x - 2M$ instead \begin{equation}
+A trick that works for the entire usable range of $x$ is to solve for an approximation variable $q \simeq x - 2M$ instead \begin{equation}
   q = 2M\, \ln\Bigg(\exp\left(\frac{r}{2M} - 1\right) - 1\Bigg),
 \end{equation}
 which (unlike $x$) is easily invertible in terms of $r$
@@ -200,7 +201,7 @@ as the derivative
 \begin{equation}
   \frac{dq}{dx} = \left(1+\exp\frac{-q}{2M}\right) g(r)
 \end{equation}
-is of order one on the entire domain of definition of $x$. Nevertheless, one has to be careful to avoid numerical overflows in the exponents or catastrophic loss of precision when taking logarithms of one plus a small number, which can be achieved by evaluating 
+is of order one on the entire domain of definition of $x$. One still has to be careful to avoid numerical overflows in the exponents or catastrophic loss of precision when taking logarithms of one plus a small number, which can be achieved by evaluating 
 \begin{equation}
   \ln\left(1+e^q\right) = \left\{ \begin{array}{rr}
     q + \ln\left(1 + e^{-q}\right),& q \ge 0\\
