@@ -5,7 +5,7 @@
 # Fortran compiler (adjust for your machine)
 FC = ifort
 FFLAGS = -O3 -ipo -xHOST -heap-arrays 256 -r8 -pc80 -parallel
-LDFLAGS = -static-intel
+#LDFLAGS = -static-intel
 
 # CFITSIO libraries
 CFITSIO ?= /opt/healpix
@@ -31,6 +31,7 @@ all: spectral
 
 clean:
 	rm -f spectral `find . -name "*.o" -or -name "*.mod" -or -name "*.py[cod]"`
+	rm -f *.aux *.log *.out *.synctex.gz *Notes.bib
 
 ################### Binaries & Dependencies ####################
 

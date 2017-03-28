@@ -138,7 +138,7 @@ elemental function radius(x)
         
         ! Newton's iteration for x = r + log(r-1.0) as a function of q
         do i = 1,16
-                dr = ramp(q); q = q - (1.0 + dr + log(dr) - x) * dr/(1.0+dr) * (1.0 + exp(-q))
+                dr = ramp(q); q = q - (1.0 + dr + log(dr) - x) * (dr + exp(log(dr)-q))/(1.0+dr)
         end do
         
         ! find converged radius value
