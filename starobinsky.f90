@@ -40,7 +40,7 @@ elemental function DV(phi)
         real DV, x, p, q, phi; intent(in) :: phi
         
         x = curvature(phi); p = x*x + 1.0; q = (n+1)*x*x + 1.0
-        DV = R0/3.0 * (x + 2.0*lambda*(q/p**(n+1) - 1.0))
+        DV = (R0/3.0) * (x + 2.0*lambda*(q/p**(n+1) - 1.0))
 end function DV
 
 ! second derivative of scalar field potential
@@ -48,7 +48,7 @@ elemental function DDV(phi)
         real DDV, x, p, q, s, phi; intent(in) :: phi
         
         x = curvature(phi); p = x*x + 1.0; q = (2*n+1)*x*x - 1.0; s = p**(n+2)
-        DDV = (2.0/3.0)*R0 * (s/4.0 - n*(n+1)*lambda*x**3)/(mu*s + (n*lambda)*q)
+        DDV = (2.0/3.0*R0) * (s/4.0 - n*(n+1)*lambda*x**3)/(mu*s + (n*lambda)*q)
 end function DDV
 
 end module
