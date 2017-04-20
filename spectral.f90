@@ -23,7 +23,7 @@
 ! of PDE's given a proper field and coordinate choice, e.g. hep-th/0409117
 ! 
 ! Andrei Frolov <frolov@sfu.ca>; provided as is, modify or redistribute
-! please cite arXiv:XXXX.XXXXX if you use this code for your research
+! please cite arXiv:1704.04114 if you use this code for your research
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

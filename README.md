@@ -17,5 +17,5 @@ Spherical collapse in scalar-tensor theories usually reduces to this type of
 PDE's given a proper field and coordinate choice, e.g. [hep-th/0409117](https://arxiv.org/abs/hep-th/0409117).
 
 Written by Andrei Frolov <frolov@sfu.ca>; provided as is, permission is granted to
-modify or redistribute. Please cite [arXiv:XXXX.XXXXX]() if you use this code in
+modify or redistribute. Please cite [arXiv:1704.04114](https://arxiv.org/abs/1704.04114) if you use this code in
 your research.
