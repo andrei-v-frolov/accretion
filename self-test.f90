@@ -1,17 +1,17 @@
-! code testing implementation of curvaton-like models for internal consistency
+! code testing implementation of scalaron f(R)-like models for internal consistency
 
-program test; use starobinsky, only : curvaton, curvature, DV, DDV; implicit none
+program test; use starobinsky, only : scalaron, curvature, DV, DDV; implicit none
 
 integer, parameter :: n = 1000 ! number of log-spaced curvature values to test
 
-! curvature and curvaton values, potential and its derivatives for integration
+! curvature and scalaron values, potential and its derivatives for integration
 real x(n), phi(n), error(n), y(3)
 
 integer i
 
-! initialize test curvaton grid
+! initialize test curvature grid
 forall (i=1:n) x(i) = exp(log(1000.0)*(i-1)/(n-1))
-phi = curvaton(x); error = curvature(phi)-x
+phi = scalaron(x); error = curvature(phi)-x
 
 ! initialize potential integrator
 y = [phi(1), 0.0, DV(phi(1))]
@@ -19,8 +19,8 @@ y = [phi(1), 0.0, DV(phi(1))]
 write (*,('(A)')) "# OUTPUT: x, phi, integral(V'), integral(V''), V'-integral(V''), curvature(phi)-x;"
 
 do i = 2,n
-	call gl10(y, phi(i)-phi(i-1))
-	write (*,'(1F24.16,5G24.16)') x(i), y, DV(phi(i))-y(3), error(i)
+        call gl10(y, phi(i)-phi(i-1))
+        write (*,'(1F24.16,5G24.16)') x(i), y, DV(phi(i))-y(3), error(i)
 end do
 
 contains
