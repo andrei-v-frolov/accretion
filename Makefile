@@ -30,12 +30,14 @@ LIBS += $(FITLIB) $(LAPLIB)
 all: spectral
 
 clean:
-	rm -f spectral `find . -name "*.o" -or -name "*.mod" -or -name "*.py[cod]"`
+	rm -f self-test spectral
+	rm -f `find . -name "*.o" -or -name "*.mod" -or -name "*.py[cod]"`
 	rm -f *.aux *.blg *.log *.out *.synctex.gz *Notes.bib
 
 ################### Binaries & Dependencies ####################
 
 # binaries
+self-test: starobinsky.o hu-sawicki.o
 spectral: fitsio.o massive.o starobinsky.o hu-sawicki.o
 
 # generic rules

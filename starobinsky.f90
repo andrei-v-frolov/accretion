@@ -15,7 +15,14 @@ real, parameter :: phi0 = -1.0e-4
 
 contains
 
-! return dimensionless Ricci curvature r = R/R0 corresponding to phi
+! return curvaton phi corresponding to dimensionless Ricci curvature x = R/R0
+elemental function curvaton(x)
+	real curvaton, x; intent(in) x
+	
+	curvaton = -(2.0*lambda*n)*x/(x*x+1.0)**(n+1) + (2.0*mu)*x
+end function curvaton
+
+! return dimensionless Ricci curvature x = R/R0 corresponding to phi
 elemental function curvature(phi)
 	integer i; real curvature, x, p, q, s, phi; intent(in) phi
 	

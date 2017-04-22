@@ -3,6 +3,7 @@ attic/*
 notes/*
 
 # ignore Fortran binaries
+self-test
 spectral
 *.[ao]
 *.out
