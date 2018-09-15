@@ -47,15 +47,16 @@
 program wave; use fitsio; use massive, only : phi0, DV, DDV; implicit none
 
 ! solver control parameters
-integer, parameter :: nn = 2**9                 ! number of nodes to sample on (i.e. spectral order)
-integer, parameter :: tt = 2**13                ! total number of time steps to take (i.e. runtime)
+integer, parameter :: nn = 2**11                ! number of nodes to sample on (i.e. spectral order)
+integer, parameter :: tt = 2**17                ! total number of time steps to take (i.e. runtime)
+integer, parameter :: nt = 2**4                 ! log output every nt time steps (i.e. downsampling)
 real,    parameter :: dt = 0.005                ! time step size (simulated timespan is tt*dt)
-real,    parameter :: ell = 2.0                 ! grid compactification scale (set to 2.0 if in doubt)
+real,    parameter :: ell = 64.0                ! grid compactification scale (set to 2.0 if in doubt)
 
 ! output control parameters
-integer, parameter :: pml = 2**4                ! perfectly matched layer (supported on 3*pml nodes)
+integer, parameter :: pml = 2**6                ! perfectly matched layer (supported on 3*pml nodes)
 integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
-real,    parameter :: x0 = (pts-1)*(dt/2.0)     ! output spans the range of x in an interval [-x0,x0]
+real,    parameter :: x0 = (pts-1)*(nt*dt/2.0)  ! output spans the range of x in an interval [-x0,x0]
 
 logical, parameter :: output$log = .true.       ! output plain text log to stdout while code is running
 logical, parameter :: output$fit = .true.       ! output binary data to FITS file when simulation ends
@@ -81,7 +82,7 @@ real, allocatable :: history(:,:,:)
 integer i
 
 ! allocate storage for field evolution
-if (output$fit) allocate(history(3,pts,tt+1), source=0.0)
+if (output$fit) allocate(history(3,pts,tt/nt+1), source=0.0)
 
 ! initialize grid and linear operators (derivative D, Laplacian L, and prolongation Q)
 call initg(); call initl()
@@ -93,13 +94,13 @@ if (sqrt(DDV(phi0))*dt > 0.25) pause "Time step will not resolve mass scale, do 
 ! sanity checks on the output grid extent selected
 if (x0 > maxval(x, gamma == 0.0)) pause "Output grid will include boundary layer, do you really want to run?"
 
-! force term corresponding to matter distributuion truncated at 6M
-F = DV(phi0) * (tanh(5.0*(r-3.0)) + 1.0)/2.0
+! force term is absent in scattering problem
+F = 0.0
 
 ! initial field and velocity profiles
 associate (phi => state(1:nn), u => state(nn+1:2*nn), v => state(2*nn+1:3*nn), w => state(3*nn+1:4*nn))
-        phi = phi0; !call static(phi)
-        u = 0.0; v = (r*r) * matmul(D,phi); w = 0.0
+        phi = exp(-(x/8.0-7.5)**2) * (60.0/r) ! ingoing Gaussian wavepacket
+        u = matmul(D,phi) + (g/r) * phi; v = (r*r) * matmul(D,phi); w = 0.0
 end associate
 
 ! output initial conditions
@@ -107,7 +108,7 @@ call dump(0.0, state, history(:,:,1))
 
 ! main time evolution loop
 do i = 1,tt
-        call gl10(state, dt); call dump(i*dt, state, history(:,:,i+1))
+        call gl10(state, dt); if (mod(i,nt) == 0) call dump(i*dt, state, history(:,:,i/nt+1))
 end do
 
 ! write entire evolution history into a FITS file
