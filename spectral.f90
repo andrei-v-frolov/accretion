@@ -155,7 +155,7 @@ subroutine initg()
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
         ! tortoise coordinate and metric functions
-        x = ell/tan(theta); r = radius(x); g = 1.0 - 1.0/r; Veff = l*(l+1)/(r*r)
+        x = ell/tan(theta); r = radius(abs(x)-20.0); g = 1.0 - 1.0/r; Veff = l*(l+1)/(r*r)
         
         ! PML absorption profile is truncated Gaussian (compactly supported on about 3*pml nodes each)
         forall (i=1:nn) gamma(i) = exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2) - 1.25e-4
