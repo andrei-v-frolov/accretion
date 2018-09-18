@@ -54,7 +54,7 @@ real,    parameter :: dt = 0.005                ! time step size (simulated time
 real,    parameter :: ell = 64.0                ! grid compactification scale (set to 2.0 if in doubt)
 
 ! output control parameters
-integer, parameter :: pml = 2**6                ! perfectly matched layer (supported on 3*pml nodes)
+integer, parameter :: pml = 2**7                ! perfectly matched layer (supported on 3*pml nodes)
 integer, parameter :: pts = 2**11 + 1           ! number of points on an uniform-spaced output grid
 real,    parameter :: x0 = (pts-1)*(nt*dt/2.0)  ! output spans the range of x in an interval [-x0,x0]
 
