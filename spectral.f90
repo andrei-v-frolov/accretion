@@ -65,7 +65,7 @@ logical, parameter :: output$fit = .true.       ! output binary data to FITS fil
 real, parameter :: pi = 3.1415926535897932384626433832795028841971694Q0
 
 ! collocation grid, metric functions, force term, and damping profile
-real theta(nn), x(nn), r(nn), g(nn), F(nn), gamma(nn)
+real theta(nn), x(nn), r(nn), g(nn), Veff(nn), F(nn), gamma(nn)
 
 ! phase space state vector packs [phi,u,v,w] into a single array
 real state(4*nn)
@@ -148,14 +148,14 @@ end function radius
 
 ! initialize Gauss-Lobatto collocation grid
 subroutine initg()
-        integer i
+        integer i; integer, parameter :: l = 1
         
         ! Chebyshev collocation grid (extrema and roots-of varieties)
         !forall (i=1:nn) theta(i) = (nn-i)*pi/(nn-1) ! includes interval ends
         forall (i=1:nn) theta(i) = (nn-i+0.5)*pi/nn ! excludes interval ends
         
         ! tortoise coordinate and metric functions
-        x = ell/tan(theta); r = radius(x); g = 1.0 - 1.0/r
+        x = ell/tan(theta); r = radius(x); g = 1.0 - 1.0/r; Veff = l*(l+1)/(r*r)
         
         ! PML absorption profile is truncated Gaussian (compactly supported on about 3*pml nodes each)
         forall (i=1:nn) gamma(i) = exp(-real(i-1)**2/pml**2) + exp(-real(i-nn)**2/pml**2) - 1.25e-4
@@ -183,7 +183,7 @@ subroutine initl()
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), grad => B(i,ia:ib), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
-                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian); laplacian = laplacian + (2.0*g/r) * grad
+                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian); laplacian = laplacian + (2.0*g/r) * grad - (g*Veff)*basis
                 call evalb(i-1, pts, grid, resampled)
         end associate; end do
         
@@ -214,7 +214,7 @@ subroutine evalf(y, dydt)
         ! unmangle phase space vector contents into human-readable form
         associate (phi => y(1:nn), u => y(nn+1:2*nn), v => y(2*nn+1:3*nn), w => y(3*nn+1:4*nn), &
                   dphi => dydt(1:nn), dudt => dydt(nn+1:2*nn), dvdt => dydt(2*nn+1:3*nn), dwdt => dydt(3*nn+1:4*nn))
-                dphi = u-w; dudt = matmul(D,v)/(r*r) - gamma*u; dvdt = matmul(D,u-w)*(r*r) - gamma*v; dwdt = g*(DV(phi) - F)
+                dphi = u-w; dudt = matmul(D,v)/(r*r) - gamma*u; dvdt = matmul(D,u-w)*(r*r) - gamma*v; dwdt = g*(DV(phi) - F + Veff*phi)
         end associate
 end subroutine evalf
 
