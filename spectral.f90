@@ -183,7 +183,7 @@ subroutine initl()
         
         ! evaluate basis and differential operator values on collocation and output grids
         do i = 1,nn; associate (basis => A(i,:), grad => B(i,ia:ib), laplacian => B(i,la:lb), resampled => B(i,xa:xb))
-                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian); laplacian = laplacian + (2.0*g/r) * grad - (g*Veff)*basis
+                call evalb(i-1, nn, theta, basis, Tnx=grad, Tnxx=laplacian); laplacian = laplacian + (2.0*g/r) * grad - (g*Veff) * basis
                 call evalb(i-1, pts, grid, resampled)
         end associate; end do
         
