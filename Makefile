@@ -10,7 +10,7 @@ FFLAGS = -O3 -ipo -xHOST -heap-arrays 256 -r8 -pc80 -parallel
 # CFITSIO libraries
 CFITSIO ?= /opt/healpix
 FITINC = -I$(CFITSIO)/include
-FITLIB = -L$(CFITSIO)/lib -lcfitsio
+FITLIB = -L$(CFITSIO)/lib -lcfitsio -lcurl
 
 # LAPACK libraries (use MKL if compiling with Intel Fortran)
 MKLROOT ?= /opt/intel/mkl
